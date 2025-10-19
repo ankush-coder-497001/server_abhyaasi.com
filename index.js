@@ -15,9 +15,9 @@ configureSecurityMiddleware(app);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/abhyaasi')
-  .then(() => console.log('📦 Connected to MongoDB'))
+  .then(() => console.log('Connected to MongoDB'))
   .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
+    console.error(' MongoDB connection error:', err);
     process.exit(1);
   });
 
@@ -32,7 +32,7 @@ app.get('/api/health', (req, res) => {
 
 // Global Error Handling Middleware
 app.use((err, req, res, next) => {
-  console.error('🚫 Error:', err);
+  console.error(' Error:', err);
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
@@ -70,12 +70,12 @@ app.use((req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', err => {
-  console.error('❌ UNHANDLED REJECTION! Shutting down...');
+  console.error(' UNHANDLED REJECTION! Shutting down...');
   console.error(err);
   server.close(() => {
     process.exit(1);
@@ -84,7 +84,7 @@ process.on('unhandledRejection', err => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', err => {
-  console.error('❌ UNCAUGHT EXCEPTION! Shutting down...');
+  console.error('UNCAUGHT EXCEPTION! Shutting down...');
   console.error(err);
   process.exit(1);
 });
