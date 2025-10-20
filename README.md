@@ -108,7 +108,7 @@ JWT_SECRET=your_jwt_secret
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone https://github.com/your-repo/elearning-backend.git
+git clone https://github.com/ankush-coder-497001/server_abhyaasi.com
 cd elearning-backend
 ```
 
