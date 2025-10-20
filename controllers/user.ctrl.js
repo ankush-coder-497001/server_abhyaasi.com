@@ -22,7 +22,6 @@ const UserController = {
       return res.status(500).json({ message: 'Upload failed', error });
     }
   }
-
 }
 
 module.exports = UserController;
