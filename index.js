@@ -21,6 +21,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/abhyaasi'
     process.exit(1);
   });
 
+
+
 // API Routes (to be added)
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -59,13 +61,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Handle unhandled routes
-app.use((req, res) => {
-  res.status(404).json({
-    status: 'error',
-    message: `Cannot find ${req.method} ${req.originalUrl} on this server`
-  });
-});
+
+
+
+const userRoutes = require('./routes/user.route')
+
+app.use('/api/v1/users', userRoutes);
+
 
 // Start server
 const PORT = process.env.PORT || 5000;

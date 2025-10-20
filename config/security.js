@@ -49,6 +49,22 @@ const apiSecurity = {
   }
 };
 
+// Safe XSS Middleware Wrapper
+const safeXSS = (req, res, next) => {
+  // Skip for upload-image or any multipart/form-data route
+  if (req.originalUrl.includes('/upload-image')) {
+    return next();
+  }
+
+  try {
+    xss()(req, res, next);
+  } catch (err) {
+    console.warn("XSS Sanitization Skipped due to error:", err.message);
+    next();
+  }
+};
+
+
 // Configure Security Middleware
 const configureSecurityMiddleware = (app) => {
   // Basic Security Headers
@@ -61,10 +77,15 @@ const configureSecurityMiddleware = (app) => {
   app.use('/api', limiter);
 
   // Data Sanitization against NoSQL Injection
-  app.use(mongoSanitize());
+  app.use((req, res, next) => {
+    if (req.originalUrl.includes('/upload-image')) {
+      return next(); // 🚨 Skip mongoSanitize & xss for this route
+    }
+    mongoSanitize()(req, res, next);
+  });
 
   // Data Sanitization against XSS
-  app.use(xss());
+  app.use(safeXSS);
 
   // Prevent HTTP Parameter Pollution
   app.use(hpp());
