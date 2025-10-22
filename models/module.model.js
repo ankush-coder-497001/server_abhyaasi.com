@@ -1,14 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-/**
- Module:
- - topics: array of {title, content}
- - theoryNotes: optional, can include pdf url
- - mcqs: embedded or referenced (we use embedded for simplicity)
- - codingTask: project spec with testcases
- - interviewQuestions: simple array
-*/
 
 const TopicSchema = new Schema({
   title: { type: String, required: true },
@@ -62,9 +54,22 @@ const ModuleSchema = new Schema({
     projectMustPass: { type: Boolean, default: true }
   },
   published: { type: Boolean, default: false },
+  isLocked: { type: Boolean, default: false },
   isCompleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 ModuleSchema.index({ courseId: 1, order: 1 }, { unique: true });
+
+ModuleSchema.pre('save', function (next) {
+  if (this.isModified('order') && this.order < 1) {
+    return next(new Error('Order must be a positive integer'));
+  }
+
+  if (this.order === 1) {
+    this.isLocked = false;
+  }
+
+  next();
+});
 
 module.exports = mongoose.model('Module', ModuleSchema);
