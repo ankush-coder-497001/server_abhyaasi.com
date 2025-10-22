@@ -11,4 +11,8 @@ router.delete('/remove/:moduleId', Auth, Module_controller.remove_module);
 
 // mcq submission route
 router.post('/submit-mcq/:moduleId', Auth, Module_controller.submit_mcq);
+
+// code submission route
+router.post('/submit-code/:moduleId', Auth, Module_controller.submit_code);
+
 module.exports = router;
