@@ -3,6 +3,7 @@ const Course_Model = require('../models/course.model')
 const Submission_Model = require('../models/submission.model')
 const codeExecutionService = require('../services/codeExecution.svc');
 const User_Model = require('../models/user.model');
+const { trusted } = require('mongoose');
 const Module_controller = {
   create_module: async (req, res) => {
     try {
@@ -186,6 +187,66 @@ const Module_controller = {
           const nextModule = course.modules.find(m => m.order === Module_model.order + 1);
           if (!nextModule && Module_model.isLastModule) {
             // no next module it means we have completed all the modules in the course 
+
+            // lets check if we are enrolled in a profession if enrolled then check if we have next course in the profession 
+            let nextCourseInProfession;
+            let nextModuleInNextCourse;
+            if (userModel.currentProfession) {
+              const profession = await Profession_Model.findById(userModel.currentProfession).populate('courses');
+              const currentCourseIndex = profession.courses.findIndex(c => c.course.toString() === course._id.toString());
+              nextCourseInProfession = profession.courses.find(c => c.order === currentCourseIndex + 1);
+              if (!nextCourseInProfession) {
+                // no next course that mean we have completed the profession lets cross check 
+                let success = true;
+                for (const profCourse of profession.courses) {
+                  const isCompleted = userModel.completedCourses.some(cc => cc.toString() === profCourse.course.toString());
+                  if (!isCompleted) {
+                    nextCourseInProfession = profCourse;
+                    success = false;
+                    break;
+                  }
+                }
+                if (success) {
+                  // user has completed the profession 
+                  userModel.enrolledProfessions.push(userModel.currentProfession);
+                  userModel.currentProfession = null;
+                  userModel.currentCourse = null;
+                  userModel.currentModule = null;
+                  await userModel.save();
+                  return res.status(200).json({
+                    status: 'success',
+                    message: 'Congratulations! You have completed the entire profession.',
+                    data: {
+                      isProfessionCompleted: true,
+                      submissionId: submission._id,
+                      status: submission.status,
+                      score: submission.score,
+                      testResults: visibleResults,
+                      cooldownUntil: submission.cooldownUntil
+                    }
+                  });
+                }
+              }
+
+              nextModuleInNextCourse = await Module_Model.findOne({ course: nextCourseInProfession.course }).sort({ order: 1 });
+              userModel.currentModule = nextModuleInNextCourse ? nextModuleInNextCourse._id : null;
+              userModel.currentCourse = nextCourseInProfession ? nextCourseInProfession.course : null;
+
+              return res.status(200).json({
+                status: 'success',
+                message: 'All tests passed! Moved to next course in profession.',
+                data: {
+                  submissionId: submission._id,
+                  status: submission.status,
+                  score: submission.score,
+                  testResults: visibleResults,
+                  cooldownUntil: submission.cooldownUntil
+                }
+              });
+
+            }
+
+
             userModel.currentCourse = null;
             userModel.currentModule = null;
 
@@ -449,6 +510,64 @@ const Module_controller = {
           const nextModule = course.modules.find(m => m.order === Module_model.order + 1);
           if (!nextModule && Module_model.isLastModule) {
             // no next module it means we have completed all the modules in the course 
+
+            // lets check if we are enrolled in a profession if enrolled then check if we have next course in the profession
+            let nextCourseInProfession;
+            let nextModuleInNextCourse;
+            if (user.currentProfession) {
+              const profession = await Profession_Model.findById(user.currentProfession).populate('courses');
+              const currentCourseIndex = profession.courses.findIndex(c => c.course.toString() === course._id.toString());
+              nextCourseInProfession = profession.courses.find(c => c.order === currentCourseIndex + 1);
+              if (!nextCourseInProfession) {
+                // no next course that mean we have completed the profession lets cross check 
+                let success = true;
+                for (const profCourse of profession.courses) {
+                  const isCompleted = user.completedCourses.some(cc => cc.toString() === profCourse.course.toString());
+                  if (!isCompleted) {
+                    nextCourseInProfession = profCourse;
+                    success = false;
+                    break;
+                  }
+                }
+                if (success) {
+                  // user has completed the profession
+                  user.enrolledProfessions.push(user.currentProfession);
+                  user.currentProfession = null;
+                  user.currentCourse = null;
+                  user.currentModule = null;
+                  await user.save();
+                  return res.status(200).json({
+                    status: 'success',
+                    message: 'Congratulations! You have completed the entire profession.',
+                    data: {
+                      isProfessionCompleted: true,
+                      submissionId: submission._id,
+                      score: submission.score,
+                      totalQuestions: Module_model.mcqs.length,
+                      passed: isPassed,
+                      results,
+                      attemptNumber: attemptCount
+                    }
+                  });
+                }
+              }
+              nextModuleInNextCourse = await Module_Model.findOne({ course: nextCourseInProfession.course }).sort({ order: 1 });
+              user.currentModule = nextModuleInNextCourse ? nextModuleInNextCourse._id : null;
+              user.currentCourse = nextCourseInProfession ? nextCourseInProfession.course : null;
+              return res.status(200).json({
+                status: 'success',
+                message: 'All tests passed! Moved to next course in profession.',
+                data: {
+                  submissionId: submission._id,
+                  score: submission.score,
+                  totalQuestions: Module_model.mcqs.length,
+                  passed: isPassed,
+                  results,
+                  attemptNumber: attemptCount
+                }
+              });
+
+            }
             user.currentCourse = null;
             user.currentModule = null;
             // lets generate the ceretificate here

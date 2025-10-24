@@ -15,7 +15,6 @@ const CourseSchema = new Schema({
     ref: "Profession", // link each course to its profession
   },
   thumbnailUrl: { type: String },
-  order: { type: Number, default: 0 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Course', CourseSchema);

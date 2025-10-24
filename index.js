@@ -68,11 +68,12 @@ const userRoutes = require('./routes/user.route')
 const CourseRoutes = require('./routes/course.route')
 const ModuleRoutes = require('./routes/module.route')
 const ProgressRoutes = require('./routes/progress.route')
+const ProfessionRoutes = require('./routes/profession.route')
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/courses', CourseRoutes)
 app.use('/api/v1/modules', ModuleRoutes);
 app.use('/api/v1/progress', ProgressRoutes);
-
+app.use('/api/v1/professions', ProfessionRoutes);
 
 
 // Start server

@@ -25,6 +25,8 @@ const UserSchema = new Schema({
   currentCourse: { type: Schema.Types.ObjectId, ref: 'Course' },
   currentModule: { type: Schema.Types.ObjectId, ref: 'Module' },
   completedCourses: [{ type: Schema.Types.ObjectId, ref: 'Course' }],
+  enrolledProfessions: [{ type: Schema.Types.ObjectId, ref: 'Profession' }],
+  currentProfession: { type: Schema.Types.ObjectId, ref: 'Profession' }
 }, { timestamps: true });
 
 UserSchema.pre('save', function (next) {

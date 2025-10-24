@@ -7,6 +7,7 @@ const Role_Validation = require('../middlewares/Role_Validation')
 router.use(Auth);
 
 router.post('/enroll/:id', CourseController.enrollInCourse);
+router.post('/unenroll', CourseController.unenroll_from_course);
 
 router.get('/slug/:slug', CourseController.getCourseBySlug);
 router.get('/get_all', CourseController.getAllCourses);

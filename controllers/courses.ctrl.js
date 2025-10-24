@@ -38,6 +38,28 @@ const CourseController = {
       res.status(500).json({ message: 'Server error', error });
     }
   },
+  unenroll_from_course: async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      if (!user.currentCourse) {
+        return res.status(400).json({ message: 'User is not enrolled in any course' });
+      }
+      if (user.currentProfession) {
+        return res.status(400).json({ message: 'Cannot unenroll from course while enrolled in a profession. Please unenroll from the profession first.' });
+      }
+      user.currentCourse = null;
+      user.currentModule = null;
+      await user.save();
+      res.json({ message: 'Unenrolled from course successfully' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error', error });
+    }
+  },
   getAllCourses: async (req, res) => {
     try {
       // we are not sending the correct answers from modules of mcq 

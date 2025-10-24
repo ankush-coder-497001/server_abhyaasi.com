@@ -14,8 +14,11 @@ const professionSchema = new mongoose.Schema({
   // array of course IDs
   courses: [
     {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Course",
+      course: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Course",
+      },
+      order: { type: Number, default: 0 },
     },
   ],
   thumbnail: {
