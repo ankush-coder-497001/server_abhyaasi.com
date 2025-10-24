@@ -67,9 +67,11 @@ app.use((err, req, res, next) => {
 const userRoutes = require('./routes/user.route')
 const CourseRoutes = require('./routes/course.route')
 const ModuleRoutes = require('./routes/module.route')
+const ProgressRoutes = require('./routes/progress.route')
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/courses', CourseRoutes)
 app.use('/api/v1/modules', ModuleRoutes);
+app.use('/api/v1/progress', ProgressRoutes);
 
 
 

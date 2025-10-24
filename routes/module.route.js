@@ -8,6 +8,8 @@ router.post('/create', Auth, Module_controller.create_module);
 router.put('/edit/:moduleId', Auth, Module_controller.edit_module);
 router.get('/get/:moduleId', Auth, Module_controller.get_module);
 router.delete('/remove/:moduleId', Auth, Module_controller.remove_module);
+router.get('/get_my_module', Auth, Module_controller.get_my_module);
+
 
 // mcq submission route
 router.post('/submit-mcq/:moduleId', Auth, Module_controller.submit_mcq);

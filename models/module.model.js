@@ -13,7 +13,6 @@ const MCQSchema = new Schema({
   correctOptionIndex: { type: Number, required: true }, // 0-based
   explanation: { type: String },
   maxAttempts: { type: Number, default: 3 },
-  isCompleted: { type: Boolean, default: false },
 }, { timestamps: true });
 
 const TestcaseSchema = new Schema({
@@ -34,7 +33,6 @@ const CodingTaskSchema = new Schema({
   }],
   testcases: [TestcaseSchema],
   timeoutSeconds: { type: Number, default: 30 },
-  isCompleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 const ModuleSchema = new Schema({
@@ -54,9 +52,7 @@ const ModuleSchema = new Schema({
     projectMustPass: { type: Boolean, default: true }
   },
   published: { type: Boolean, default: false },
-  isLocked: { type: Boolean, default: false },
-  isCompleted: { type: Boolean, default: false },
-  cooldownUntil: { type: Date }
+  isLastModule: { type: Boolean, default: false },
 }, { timestamps: true });
 
 ModuleSchema.index({ courseId: 1, order: 1 }, { unique: true });

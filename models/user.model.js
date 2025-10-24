@@ -21,7 +21,10 @@ const UserSchema = new Schema({
   certificates: [{ type: Schema.Types.ObjectId, ref: 'Certificate' }],
   lastLogin: { type: Date },
   otp: { type: String },
-  otpExpiry: { type: Date }
+  otpExpiry: { type: Date },
+  currentCourse: { type: Schema.Types.ObjectId, ref: 'Course' },
+  currentModule: { type: Schema.Types.ObjectId, ref: 'Module' },
+  completedCourses: [{ type: Schema.Types.ObjectId, ref: 'Course' }],
 }, { timestamps: true });
 
 UserSchema.pre('save', function (next) {

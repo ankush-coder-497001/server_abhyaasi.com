@@ -1,5 +1,43 @@
 const CourseModel = require('../models/course.model');
+const UserModel = require('../models/user.model');
 const CourseController = {
+  enrollInCourse: async (req, res) => {
+    try {
+      const courseId = req.params.id;
+      const userId = req.user.userId;
+      const { permissionFromUser } = req.body; // true or false 
+
+      const course = await CourseModel.findById(courseId);
+      if (!course) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      if (user.currentCourse && !permissionFromUser) {
+        return res.status(400).json({ message: 'User is already enrolled in another course. Please confirm to switch courses.' });
+      }
+
+      if (user.currentCourse && user.currentCourse.toString() === courseId) {
+        return res.status(400).json({ message: 'User already enrolled in this course' });
+      }
+
+      const alreadyCompleted = user.completedCourses.some(cId => cId.toString() === courseId);
+      if (alreadyCompleted) {
+        return res.status(400).json({ message: 'User has already completed this course' });
+      }
+
+      user.currentCourse = course._id;
+      user.currentModule = course.modules.length > 0 && course.modules.find(m => m.order === 1)._id;
+      await user.save();
+      res.json({ message: 'Enrolled in course successfully', courseId: course._id, courseTitle: course.title });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error', error });
+    }
+  },
   getAllCourses: async (req, res) => {
     try {
       // we are not sending the correct answers from modules of mcq 
