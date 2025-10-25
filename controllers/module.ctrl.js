@@ -4,6 +4,7 @@ const Submission_Model = require('../models/submission.model')
 const codeExecutionService = require('../services/codeExecution.svc');
 const User_Model = require('../models/user.model');
 const { trusted } = require('mongoose');
+const Certificate_service = require('../services/certificate.svc');
 const Module_controller = {
   create_module: async (req, res) => {
     try {
@@ -207,6 +208,19 @@ const Module_controller = {
                   }
                 }
                 if (success) {
+                  const certificateData = {
+                    title: profession.name,
+                    completedAt: new Date(),
+                    _id: profession._id
+                  }
+
+                  const res = await Certificate_service.generateCertificate(userModel, certificateData);
+                  if (res.status === 'error') {
+                    console.error('Certificate generation error:', res.error);
+                  } else {
+                    userModel.certificates.push(res.pdfUrl);
+                  }
+
                   // user has completed the profession 
                   userModel.enrolledProfessions.push(userModel.currentProfession);
                   userModel.currentProfession = null;
@@ -232,6 +246,20 @@ const Module_controller = {
               userModel.currentModule = nextModuleInNextCourse ? nextModuleInNextCourse._id : null;
               userModel.currentCourse = nextCourseInProfession ? nextCourseInProfession.course : null;
 
+              const certificateData = {
+                title: course.title,
+                completedAt: new Date(),
+                _id: course._id
+              }
+
+              const res = await Certificate_service.generateCertificate(userModel, certificateData);
+              if (res.status === 'error') {
+                console.error('Certificate generation error:', res.error);
+              } else {
+                userModel.certificates.push(res.pdfUrl);
+              }
+              await userModel.save();
+
               return res.status(200).json({
                 status: 'success',
                 message: 'All tests passed! Moved to next course in profession.',
@@ -251,6 +279,18 @@ const Module_controller = {
             userModel.currentModule = null;
 
             // lets generate the ceretificate here
+            const certificateData = {
+              title: course.title,
+              completedAt: new Date(),
+              _id: course._id
+            }
+            const res = await Certificate_service.generateCertificate(userModel, certificateData);
+            if (res.error) {
+              console.error('Certificate generation error:', res.error);
+            } else {
+
+              userModel.certificates.push(res.pdfUrl);
+            }
             userModel.completedCourses.push(course._id);
             await userModel.save();
             return res.status(200).json({
@@ -530,6 +570,20 @@ const Module_controller = {
                   }
                 }
                 if (success) {
+
+                  const certificateData = {
+                    title: profession.name,
+                    completedAt: new Date(),
+                    _id: profession._id
+                  }
+
+                  // lets generate the certificate here for profession completion
+                  const res = await Certificate_service.generateCertificate(user, certificateData);
+                  if (res.error) {
+                    console.error('Certificate generation error:', res.error);
+                  } else {
+                    user.certificates.push(res.pdfUrl);
+                  }
                   // user has completed the profession
                   user.enrolledProfessions.push(user.currentProfession);
                   user.currentProfession = null;
@@ -554,6 +608,22 @@ const Module_controller = {
               nextModuleInNextCourse = await Module_Model.findOne({ course: nextCourseInProfession.course }).sort({ order: 1 });
               user.currentModule = nextModuleInNextCourse ? nextModuleInNextCourse._id : null;
               user.currentCourse = nextCourseInProfession ? nextCourseInProfession.course : null;
+              // lets generate a new certificate here for course completion
+              const certificateData = {
+                title: course.title,
+                completedAt: new Date(),
+                _id: course._id
+              }
+              const res = await Certificate_service.generateCertificate(user, certificateData);
+              if (res.error) {
+                console.error('Certificate generation error:', res.error);
+              } else {
+
+                user.certificates.push(res.pdfUrl);
+              }
+
+              await user.save();
+
               return res.status(200).json({
                 status: 'success',
                 message: 'All tests passed! Moved to next course in profession.',
@@ -570,7 +640,18 @@ const Module_controller = {
             }
             user.currentCourse = null;
             user.currentModule = null;
-            // lets generate the ceretificate here
+            // lets generate the certificate here
+            const certificateData = {
+              title: course.title,
+              completedAt: new Date(),
+              _id: course._id
+            }
+            const res = await Certificate_service.generateCertificate(user, certificateData);
+            if (res.error) {
+              console.error('Certificate generation error:', res.error);
+            } else {
+              user.certificates.push(res.pdfUrl);
+            }
             user.completedCourses.push(course._id);
             await user.save();
             return res.status(200).json({

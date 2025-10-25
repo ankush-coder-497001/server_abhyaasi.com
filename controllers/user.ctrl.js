@@ -1,6 +1,7 @@
 const cloudinary = require('../config/cloudinary')
 const fs = require('fs');
-const UserModel = require('../models/user.model')
+const UserModel = require('../models/user.model');
+const submissionModel = require('../models/submission.model');
 const UserController = {
   uploadImage: async (req, res) => {
     try {
@@ -176,6 +177,52 @@ const UserController = {
       console.error(error);
       return res.status(500).json({ message: 'Failed to change password', error });
     }
+  },
+  add_OR_update_profile: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const { bio, college, year, profilePic } = req.body;
+
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      user.profile.bio = bio || user.profile.bio;
+      user.profile.college = college || user.profile.college;
+      user.profile.year = year || user.profile.year;
+      user.profile.profilePic = profilePic || user.profile.profilePic;
+      await user.save();
+      return res.status(200).json({ message: 'Profile added successfully', profile: user.profile });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to add profile', error });
+    }
+  },
+  get_user: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const user = await UserModel.findById(userId).select('-password -otp -otpExpiry');
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      // let's calculate rank based on points 
+      //  from submissions
+      const submissions = await submissionModel.find({ userId });
+      const totalPoints = submissions.reduce((acc, sub) => acc + sub.points, 0);
+      user.rank = calculateRank(totalPoints);
+      user.points = totalPoints;
+      await user.save();
+      return res.status(200).json({ profile: user });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to retrieve profile', error });
+    }
   }
 };
+
+function calculateRank(points) {
+  if (points >= 1000) return 'Gold';
+  if (points >= 500) return 'Silver';
+  return 'Bronze';
+}
 module.exports = UserController;

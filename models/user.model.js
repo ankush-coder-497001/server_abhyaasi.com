@@ -17,8 +17,9 @@ const UserSchema = new Schema({
   role: { type: String, default: 'student', enum: ['admin', 'student'] },
   profile: { type: ProfileSchema, default: {} },
   points: { type: Number, default: 0 },
+  rank: { type: String, default: 'Bronze' },
   badges: [{ type: Schema.Types.ObjectId, ref: 'Badge' }],
-  certificates: [{ type: Schema.Types.ObjectId, ref: 'Certificate' }],
+  certificates: [{ type: String }], // URLs to certificate PDFs
   lastLogin: { type: Date },
   otp: { type: String },
   otpExpiry: { type: Date },
