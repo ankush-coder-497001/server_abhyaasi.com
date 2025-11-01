@@ -87,16 +87,13 @@ const UserController = {
   },
   updateUserProfile: async (req, res) => {
     try {
-      const { bio, college, year, profilePic } = req.body;
+      const updateData = req.body;
       const userId = req.user.userId;
-      const user = await UserModel.findById(userId);
+      const user = await UserModel.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-      user.profile.bio = bio || user.profile.bio;
-      user.profile.college = college || user.profile.college;
-      user.profile.year = year || user.profile.year;
-      user.profile.profilePic = profilePic || user.profile.profilePic;
+
       await user.save();
       return res.status(200).json({ message: 'Profile updated successfully', profile: user.profile });
     } catch (error) {
@@ -167,7 +164,11 @@ const UserController = {
         return res.status(400).json({ message: 'Current and new passwords are required' });
       }
       const user = await UserModel.findById(userId);
-      if (!user || !user.comparePassword(currentPassword)) {
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      if (!user.comparePassword(currentPassword)) {
         return res.status(401).json({ message: 'Invalid current password' });
       }
       user.password = newPassword;

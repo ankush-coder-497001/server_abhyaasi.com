@@ -1,6 +1,5 @@
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const hpp = require('hpp');
 const cors = require('cors');
@@ -51,13 +50,19 @@ const apiSecurity = {
 
 // Safe XSS Middleware Wrapper
 const safeXSS = (req, res, next) => {
-  // Skip for upload-image or any multipart/form-data route
-  if (req.originalUrl.includes('/upload-image')) {
+  if (req.originalUrl.includes('/upload-image') || req.originalUrl.includes('/certificates')) {
     return next();
   }
 
   try {
-    xss()(req, res, next);
+    if (req.body) {
+      for (let key in req.body) {
+        if (typeof req.body[key] === 'string') {
+          req.body[key] = xss(req.body[key]);
+        }
+      }
+    }
+    next();
   } catch (err) {
     console.warn("XSS Sanitization Skipped due to error:", err.message);
     next();
@@ -76,16 +81,7 @@ const configureSecurityMiddleware = (app) => {
   // Rate Limiting
   app.use('/api', limiter);
 
-  // Data Sanitization against NoSQL Injection
-  app.use((req, res, next) => {
-    if (req.originalUrl.includes('/upload-image')) {
-      return next(); // 🚨 Skip mongoSanitize & xss for this route
-    }
-    mongoSanitize()(req, res, next);
-  });
 
-  // Data Sanitization against XSS
-  app.use(safeXSS);
 
   // Prevent HTTP Parameter Pollution
   app.use(hpp());

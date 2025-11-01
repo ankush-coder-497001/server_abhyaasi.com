@@ -5,6 +5,7 @@ const codeExecutionService = require('../services/codeExecution.svc');
 const User_Model = require('../models/user.model');
 const { trusted } = require('mongoose');
 const Certificate_service = require('../services/certificate.svc');
+const courseModel = require('../models/course.model');
 const Module_controller = {
   create_module: async (req, res) => {
     try {
@@ -22,6 +23,11 @@ const Module_controller = {
         interviewQuestions
       });
       await newModule.save();
+
+      const course = await courseModel.findById(courseId);
+      course.modules.push(newModule._id);
+      await course.save();
+
       res.status(201).json({
         status: 'success',
         message: 'Module created successfully',
@@ -170,6 +176,8 @@ const Module_controller = {
         return result;
       });
 
+      console.log(submission)
+
 
       if (submission.status === 'passed') {
 
@@ -186,7 +194,7 @@ const Module_controller = {
           // lets find out next module and unlock it for the user
           const course = await Course_Model.findById(Module_model.courseId).populate('modules');
           const nextModule = course.modules.find(m => m.order === Module_model.order + 1);
-          if (!nextModule && Module_model.isLastModule) {
+          if (!nextModule) {
             // no next module it means we have completed all the modules in the course 
 
             // lets check if we are enrolled in a profession if enrolled then check if we have next course in the profession 
@@ -519,7 +527,7 @@ const Module_controller = {
       } else {
         // Create submission record
         submission = new Submission_Model({
-          userId: req.user.id,
+          userId: userId,
           courseId: Module_model.courseId,
           moduleId: moduleId,
           type: 'mcq',

@@ -7,7 +7,7 @@ const CourseController = {
       const userId = req.user.userId;
       const { permissionFromUser } = req.body; // true or false 
 
-      const course = await CourseModel.findById(courseId);
+      const course = await CourseModel.findById(courseId).populate('modules');
       if (!course) {
         return res.status(404).json({ message: 'Course not found' });
       }
@@ -101,7 +101,7 @@ const CourseController = {
   },
   createCourse: async (req, res) => {
     try {
-      const { title, description, difficulty, thumbnailUrl } = req.body;
+      const { title, description, difficulty, thumbnailUrl, duration } = req.body;
       const slug = title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
       const existingCourse = await CourseModel.findOne({ slug });
       if (existingCourse) {
@@ -113,6 +113,7 @@ const CourseController = {
         description,
         difficulty,
         thumbnailUrl,
+        duration,
         createdBy: req.user._id
       });
       await newCourse.save();

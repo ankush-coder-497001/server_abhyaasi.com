@@ -41,8 +41,9 @@ const ModuleSchema = new Schema({
   order: { type: Number, required: true }, // ordering within course
   topics: [TopicSchema], // max ~5 topics
   theoryNotes: {
-    text: { type: String },
-    pdfUrl: { type: String }
+    text: {
+      type: String,  //it should contain html so we can render it directly
+    }
   },
   mcqs: [MCQSchema],
   codingTask: { type: CodingTaskSchema },

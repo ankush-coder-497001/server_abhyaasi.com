@@ -12,7 +12,7 @@ router.put('/profile', Auth, UserController.updateUserProfile);
 router.post('/register_or_login_via_oauth', UserController.registerOrLoginUserViaGoogleAuth);
 router.post('/forgot_password_send_otp', UserController.forgotPassword_sendOTP);
 router.post('/forgot_password_verify_otp', UserController.forgotPassword_verifyOTP);
-router.post('/reset_password', UserController.resetPassword);
+router.post('/reset_password', Auth, UserController.resetPassword);
 
 
 // profile routes

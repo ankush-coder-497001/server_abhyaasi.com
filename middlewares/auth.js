@@ -1,13 +1,14 @@
 // auth middleware
 const User = require('../models/user.model')
+const jwt = require('jsonwebtoken');
 const Auth = async (req, res, next) => {
   try {
-    const token = req.cookies.authToken || req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ message: 'Unauthorized' });
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.userId);
+      req.user = decoded;
       next();
     } catch (error) {
       console.error(error);
