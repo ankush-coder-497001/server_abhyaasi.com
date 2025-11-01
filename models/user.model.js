@@ -17,11 +17,17 @@ const UserSchema = new Schema({
   role: { type: String, default: 'student', enum: ['admin', 'student'] },
   profile: { type: ProfileSchema, default: {} },
   points: { type: Number, default: 0 },
+  rank: { type: String, default: 'Bronze' },
   badges: [{ type: Schema.Types.ObjectId, ref: 'Badge' }],
-  certificates: [{ type: Schema.Types.ObjectId, ref: 'Certificate' }],
+  certificates: [{ type: String }], // URLs to certificate PDFs
   lastLogin: { type: Date },
   otp: { type: String },
-  otpExpiry: { type: Date }
+  otpExpiry: { type: Date },
+  currentCourse: { type: Schema.Types.ObjectId, ref: 'Course' },
+  currentModule: { type: Schema.Types.ObjectId, ref: 'Module' },
+  completedCourses: [{ type: Schema.Types.ObjectId, ref: 'Course' }],
+  enrolledProfessions: [{ type: Schema.Types.ObjectId, ref: 'Profession' }],
+  currentProfession: { type: Schema.Types.ObjectId, ref: 'Profession' }
 }, { timestamps: true });
 
 UserSchema.pre('save', function (next) {

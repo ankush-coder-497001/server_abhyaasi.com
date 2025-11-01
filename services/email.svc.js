@@ -22,6 +22,6 @@ const EmailService = {
     } catch (error) {
       console.error('Error sending OTP email:', error);
     }
-  }
+  },
 };
 module.exports = EmailService;

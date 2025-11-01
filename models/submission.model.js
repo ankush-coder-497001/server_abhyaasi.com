@@ -12,7 +12,7 @@ const SubmissionSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   courseId: { type: Schema.Types.ObjectId, ref: 'Course' },
   moduleId: { type: Schema.Types.ObjectId, ref: 'Module', required: true },
-  type: { type: String, enum: ['mcq', 'project'], required: true },
+  type: { type: String, enum: ['mcq', 'code'], required: true },
   payload: { type: Schema.Types.Mixed }, // project files meta or mcq answers
   status: { type: String, enum: ['pending', 'running', 'passed', 'failed', 'blocked', 'needs_review'], default: 'pending' },
   score: { type: Number }, // 0..100

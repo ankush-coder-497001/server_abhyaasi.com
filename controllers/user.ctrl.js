@@ -1,6 +1,7 @@
 const cloudinary = require('../config/cloudinary')
 const fs = require('fs');
-const UserModel = require('../models/user.model')
+const UserModel = require('../models/user.model');
+const submissionModel = require('../models/submission.model');
 const UserController = {
   uploadImage: async (req, res) => {
     try {
@@ -86,16 +87,13 @@ const UserController = {
   },
   updateUserProfile: async (req, res) => {
     try {
-      const { bio, college, year, profilePic } = req.body;
+      const updateData = req.body;
       const userId = req.user.userId;
-      const user = await UserModel.findById(userId);
+      const user = await UserModel.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-      user.profile.bio = bio || user.profile.bio;
-      user.profile.college = college || user.profile.college;
-      user.profile.year = year || user.profile.year;
-      user.profile.profilePic = profilePic || user.profile.profilePic;
+
       await user.save();
       return res.status(200).json({ message: 'Profile updated successfully', profile: user.profile });
     } catch (error) {
@@ -166,7 +164,11 @@ const UserController = {
         return res.status(400).json({ message: 'Current and new passwords are required' });
       }
       const user = await UserModel.findById(userId);
-      if (!user || !user.comparePassword(currentPassword)) {
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      if (!user.comparePassword(currentPassword)) {
         return res.status(401).json({ message: 'Invalid current password' });
       }
       user.password = newPassword;
@@ -176,6 +178,52 @@ const UserController = {
       console.error(error);
       return res.status(500).json({ message: 'Failed to change password', error });
     }
+  },
+  add_OR_update_profile: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const { bio, college, year, profilePic } = req.body;
+
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      user.profile.bio = bio || user.profile.bio;
+      user.profile.college = college || user.profile.college;
+      user.profile.year = year || user.profile.year;
+      user.profile.profilePic = profilePic || user.profile.profilePic;
+      await user.save();
+      return res.status(200).json({ message: 'Profile added successfully', profile: user.profile });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to add profile', error });
+    }
+  },
+  get_user: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const user = await UserModel.findById(userId).select('-password -otp -otpExpiry');
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      // let's calculate rank based on points 
+      //  from submissions
+      const submissions = await submissionModel.find({ userId });
+      const totalPoints = submissions.reduce((acc, sub) => acc + sub.points, 0);
+      user.rank = calculateRank(totalPoints);
+      user.points = totalPoints;
+      await user.save();
+      return res.status(200).json({ profile: user });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to retrieve profile', error });
+    }
   }
 };
+
+function calculateRank(points) {
+  if (points >= 1000) return 'Gold';
+  if (points >= 500) return 'Silver';
+  return 'Bronze';
+}
 module.exports = UserController;

@@ -14,8 +14,8 @@ const CourseSchema = new Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Profession", // link each course to its profession
   },
+  duration: { type: String }, // e.g., "4 weeks", "2 months"
   thumbnailUrl: { type: String },
-  order: { type: Number, default: 0 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Course', CourseSchema);
