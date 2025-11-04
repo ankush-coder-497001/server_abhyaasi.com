@@ -18,6 +18,7 @@ router.post('/reset_password', Auth, UserController.resetPassword);
 // profile routes
 router.put('/add_OR_update_profile', Auth, UserController.add_OR_update_profile);
 router.get('/get_user', Auth, UserController.get_user);
+router.get('/get_all_users', Auth, UserController.get_all_users);
 // this is for uploading single images 
 // this will return the url of the uploaded image 
 // public route
