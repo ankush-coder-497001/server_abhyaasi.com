@@ -13,6 +13,7 @@ router.get('/slug/:slug', CourseController.getCourseBySlug);
 router.get('/get_all', CourseController.getAllCourses);
 router.get('/:id', CourseController.getCourseById);
 
+router.put('/:courseId', Role_Validation(['admin']), CourseController.toggleCourseVisibility);
 router.post('/create', Role_Validation(['admin']), CourseController.createCourse);
 router.put('/update/:id', Role_Validation(['admin']), CourseController.updateCourse);
 router.delete('/delete/:id', Role_Validation(['admin']), CourseController.removeCourse);

@@ -56,7 +56,10 @@ const Profession_controller = {
       if (!professionId) {
         return res.status(400).json({ message: 'Profession ID is required' });
       }
-      const profession = await Profession.findById(professionId).populate('courses');
+      const profession = await Profession.findById(professionId).populate({
+        path: 'courses.course',
+        populate: { path: 'modules', select: "-mcqs.correctOptionIndex" }
+      });
       if (!profession) {
         return res.status(404).json({ message: 'Profession not found' });
       }
@@ -86,7 +89,7 @@ const Profession_controller = {
       if (!professionId) {
         return res.status(400).json({ message: 'Profession ID is required' });
       }
-      const profession = await Profession.findById(professionId);
+      const profession = await Profession.findById(professionId).populate('courses.course');
       if (!profession) {
         return res.status(404).json({ message: 'Profession not found' });
       }
@@ -101,9 +104,12 @@ const Profession_controller = {
       user.enrolledProfessions.push(professionId);
       user.currentProfession = professionId;
       const firstCourse = profession.courses.sort((a, b) => a.order - b.order)[0];
-      if (firstCourse) {
+      if (!firstCourse) {
+        user.currentCourse = null;
+        user.currentModule = null;
+      } else {
         user.currentCourse = firstCourse.course;
-        const firstModule = moduleModel.findOne({ course: firstCourse.course }).sort({ order: 1 });
+        const firstModule = await moduleModel.findOne({ courseId: firstCourse.course._id }).sort({ order: 1 });
         if (firstModule) {
           user.currentModule = firstModule._id;
         }
@@ -153,6 +159,21 @@ const Profession_controller = {
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error', error });
+    }
+  },
+  toggleProfessionVisibility: async (req, res) => {
+    try {
+      const { professionId } = req.params
+      const profession = await Profession.findById(professionId);
+      if (!profession) {
+        return res.status(404).json({ message: "profession not found" })
+      }
+      profession.isPublished = profession.isPublished ? false : true;
+      await profession.save()
+      res.status(200).json({ message: `profession is ${profession.isPublished ? 'published' : 'archived'}` })
+    } catch (error) {
+      console.error(error.message)
+      res.status(500).json({ message: error.message })
     }
   }
 };

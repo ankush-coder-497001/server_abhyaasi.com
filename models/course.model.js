@@ -16,6 +16,7 @@ const CourseSchema = new Schema({
   },
   duration: { type: String }, // e.g., "4 weeks", "2 months"
   thumbnailUrl: { type: String },
+  isPublished: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Course', CourseSchema);

@@ -1,5 +1,4 @@
-// models/Profession.js
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
 const professionSchema = new mongoose.Schema({
   name: {
@@ -28,6 +27,9 @@ const professionSchema = new mongoose.Schema({
     type: String, // e.g., "3 months"
   },
   tags: [String],
+  isPublished: { type: Boolean, default: false }
 });
 
-export const Profession = mongoose.model("Profession", professionSchema);
+const Profession = mongoose.model("Profession", professionSchema);
+
+module.exports = Profession;

@@ -8,6 +8,11 @@ const CourseController = {
       const { permissionFromUser } = req.body; // true or false 
 
       const course = await CourseModel.findById(courseId).populate('modules');
+
+      if (!course.isPublished) {
+        return res.status(403).json({ message: "this course is not published yet" })
+      }
+
       if (!course) {
         return res.status(404).json({ message: 'Course not found' });
       }
@@ -62,8 +67,8 @@ const CourseController = {
   },
   getAllCourses: async (req, res) => {
     try {
-      // we are not sending the correct answers from modules of mcq 
-      const courses = await CourseModel.find().populate({
+      // we are not sending the correct answers from modules of mcq
+      const courses = await CourseModel.find({ isPublished: true }).populate({
         path: 'modules',
         select: '-mcqs.correctOptionIndex'
       }).populate('createdBy', 'name email');
@@ -89,7 +94,7 @@ const CourseController = {
   getCourseById: async (req, res) => {
     try {
       const courseId = req.params.id;
-      const course = await CourseModel.findById(courseId).populate('modules').populate('createdBy', 'name email');
+      const course = await CourseModel.findById(courseId, { isPublished: true }).populate('modules').populate('createdBy', 'name email');
       if (!course) {
         return res.status(404).json({ message: 'Course not found' });
       }
@@ -151,6 +156,22 @@ const CourseController = {
       res.status(500).json({ message: 'Server error', error });
     }
   },
+  toggleCourseVisibility: async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const course = await CourseModel.findById(courseId);
+      if (!course) {
+        return res.status(404).json({ message: "course not found !" })
+      }
+
+      course.isPublished = course.isPublished ? false : true;
+      await course.save();
+      res.status(200).json({ message: `course is now ${course.isPublished ? 'published' : 'archived'}` })
+    } catch (error) {
+      console.error(error.message);
+      res.status(500).json({ message: "Error In Toggle Course visibility" })
+    }
+  }
 }
 
 module.exports = CourseController;
