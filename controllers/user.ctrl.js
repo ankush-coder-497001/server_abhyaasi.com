@@ -211,7 +211,7 @@ const UserController = {
       const submissions = await submissionModel.find({ userId });
       const totalPoints = submissions.reduce((acc, sub) => acc + sub.points, 0);
       user.rank = calculateRank(totalPoints);
-      user.points = totalPoints;
+      user.points = totalPoints || 0;
       await user.save();
       return res.status(200).json({ profile: user });
     } catch (error) {
@@ -228,6 +228,27 @@ const UserController = {
       return res.status(500).json({ message: 'Failed to retrieve users', error });
     }
   },
+  trackActivity: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd
+      const alreadyTracked = user.activityHistory.some(
+        (entry) => entry.date === today
+      )
+      if (!alreadyTracked) {
+        user.activityHistory.push({ date: today });
+        await user.save();
+      }
+      return res.status(200).json({ message: 'Activity tracked successfully' });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Streak monitoring failed', error });
+    }
+  }
 };
 
 function calculateRank(points) {
