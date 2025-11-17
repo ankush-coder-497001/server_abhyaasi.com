@@ -1,0 +1,137 @@
+{
+  "platform_name": "Abhyasi.com",
+  "tagline": "Learn, Build, Achieve",
+  "overview": {
+    "description": "Abhyasi.com is a structured e-learning platform designed to help students—especially from Tier-3 colleges—learn programming and computer science through practical, hands-on, project-based learning. It centralizes theory, practice, mini-projects, assessments, and interview preparation in one platform.",
+    "primary_goal": "Help students learn efficiently, build real projects, and become job-ready."
+  },
+  "vision": "To make high-quality, practical, and structured computer science education accessible to every student in India, especially those from Tier-3 and underrepresented colleges.",
+  "mission": [
+    "Provide modular, project-based learning.",
+    "Structure learning level-wise: Course → Module → Topics → Sections.",
+    "Offer theory, coding mini-projects, MCQs, and interview prep in one platform.",
+    "Enable progress tracking with badges, leaderboards, and certificates.",
+    "Provide AI-powered doubt clearing and real-time guidance."
+  ],
+  "core_features": {
+    "structured_courses": {
+      "description": "Level-wise, neatly structured learning paths.",
+      "details": [
+        "Each module includes theory, coding projects, MCQs, and interview questions.",
+        "Progressive unlocking of modules."
+      ]
+    },
+    "hands_on_coding": {
+      "description": "In-browser coding environment similar to LeetCode.",
+      "details": [
+        "Mini-projects with automated test cases.",
+        "Practice integrated with learning modules."
+      ]
+    },
+    "assessments_progress": {
+      "description": "Tracks student progress and learning consistency.",
+      "details": [
+        "Unlimited MCQ attempts for topics.",
+        "Limited attempts for module-level finals.",
+        "Progress-based unlocking of next modules.",
+        "Badges, leaderboard, certificates."
+      ]
+    },
+    "interview_preparation": {
+      "description": "Focused on job-readiness.",
+      "details": [
+        "10–15 curated interview questions per module.",
+        "Downloadable for offline practice."
+      ]
+    },
+    "ai_assistance": {
+      "description": "AI chatbot for doubt solving.",
+      "details": [
+        "Helps in theory doubts.",
+        "Assists in debugging and project guidance.",
+        "Explains concepts clearly and interactively."
+      ]
+    },
+    "gamification": {
+      "description": "Motivates students to learn consistently.",
+      "details": [
+        "Leaderboards showing top learners.",
+        "Badges for module/course completion.",
+        "Certificates as achievements."
+      ]
+    }
+  },
+  "problem_statement": {
+    "problem": "Tier-3 college students face scattered resources, lack structured mentorship, and struggle with practical application of knowledge.",
+    "solution": "Abhyasi.com organizes high-quality content into structured, progressive learning modules combining theory, coding, assessments, and interview prep.",
+    "impact": "Students can learn efficiently, practice consistently, and build strong project portfolios for internships and jobs."
+  },
+  "target_audience": [
+    "Students from Tier-3 colleges",
+    "Self-learners transitioning into tech",
+    "Career changers",
+    "Beginners in programming",
+    "Mentors & educators supporting practical CS learning"
+  ],
+  "learning_flow": {
+    "structure": "Course → Module → Topics → Sections",
+    "each_module_includes": [
+      "Theory content",
+      "Coding mini-project (with test cases)",
+      "MCQs for reinforcement",
+      "10–15 interview questions"
+    ],
+    "completion_rules": [
+      "Project + MCQ must be completed to unlock next module.",
+      "Progress contributes to leaderboard and badges."
+    ]
+  },
+  "success_metrics": {
+    "engagement": "Daily active users, session duration",
+    "completion": "Modules and course completion rate",
+    "skill_mastery": "Students passing final project + MCQ tests",
+    "placement": "Internship/job conversions via Abhyasi",
+    "retention": "1-month and 3-month user retention"
+  },
+  "long_term_vision": [
+    "AI-driven automated course generation",
+    "Mentor-based code reviews",
+    "Real-time debugging assistance",
+    "Mobile app for on-the-go learning",
+    "Placement assistance programs"
+  ],
+  "why_helpful": [
+    "All educational content structured in one place",
+    "Hands-on learning approach",
+    "Gamified and motivating ecosystem",
+    "Placement-oriented modules",
+    "Accessible and affordable for Tier-3 students"
+  ],
+  "conclusion": "Abhyasi.com aims to bridge the gap between theoretical education and practical industry skills, helping students become job-ready through structured learning, practical projects, AI assistance, and gamified motivation.",
+  "faqs": [
+    {
+      "q": "What is Abhyasi.com?",
+      "a": "Abhyasi.com is a structured learning platform that teaches programming through theory, coding projects, MCQs, and interview questions — all in one place."
+    },
+    {
+      "q": "Who is Abhyasi.com for?",
+      "a": "It is designed for Tier-3 college students, beginners in programming, and anyone wanting job-ready skills."
+    },
+    {
+      "q": "What makes Abhyasi different?",
+      "a": "Abhyasi combines structured learning, hands-on coding, gamification, and AI doubt solving — making it a complete learning ecosystem."
+    },
+    {
+      "q": "How does progress unlocking work?",
+      "a": "Students must complete the mini-project and MCQs of a module to unlock the next one."
+    },
+    {
+      "q": "Does Abhyasi help in placement?",
+      "a": "Yes. The platform focuses on real skills, interview prep, portfolio building, and confidence — supporting placements indirectly."
+    },
+    {
+      "q": "What does each module contain?",
+      "a": "Theory, coding mini-project, MCQs, and 10–15 interview questions."
+    }
+  ]
+}

@@ -23,6 +23,11 @@ const UserSchema = new Schema({
   lastLogin: { type: Date },
   otp: { type: String },
   otpExpiry: { type: Date },
+  activityHistory: [
+    {
+      date: { type: String },
+    }
+  ],
   currentCourse: { type: Schema.Types.ObjectId, ref: 'Course' },
   currentModule: { type: Schema.Types.ObjectId, ref: 'Module' },
   completedCourses: [{ type: Schema.Types.ObjectId, ref: 'Course' }],
