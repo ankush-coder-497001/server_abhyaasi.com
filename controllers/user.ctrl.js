@@ -2,6 +2,7 @@ const cloudinary = require('../config/cloudinary')
 const fs = require('fs');
 const UserModel = require('../models/user.model');
 const submissionModel = require('../models/submission.model');
+const EmailService = require('../services/email.svc');
 const UserController = {
   uploadImage: async (req, res) => {
     try {
@@ -56,8 +57,12 @@ const UserController = {
       }
       let user = await UserModel.findOne({ email });
       if (!user) {
-        user = new UserModel({ name, email, password: Math.random().toString(36).slice(-8) });
+        user = new UserModel({ name, email, password: Math.random().toString(36).slice(-8), isOauthUser: true });
         await user.save();
+        return res.status(201).json({ message: 'User registered via Google Auth successfully', user });
+      }
+      if (!user.isOauthUser) {
+        return res.status(400).json({ message: 'Email already registered without OAuth. Please login using email and password.' });
       }
       const token = user.generateAuthToken();
       return res.status(200).json({ message: 'User logged in successfully', user, token });
@@ -75,6 +80,9 @@ const UserController = {
       const user = await UserModel.findOne({ email });
       if (!user || !user.comparePassword(password)) {
         return res.status(401).json({ message: 'Invalid email or password' });
+      }
+      if (user.isOauthUser) {
+        return res.status(400).json({ message: 'This account is registered via OAuth. Please login using Google Auth.' });
       }
       const token = user.generateAuthToken();
       user.lastLogin = new Date();
@@ -114,6 +122,25 @@ const UserController = {
       return res.status(500).json({ message: 'Failed to fetch profile', error });
     }
   },
+  forgot_password: async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const user = await UserModel.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      // check if email is verified via otp before allowing password reset
+      if (user.otp !== null) {
+        return res.status(400).json({ message: 'Email not verified. Please verify OTP before resetting password' });
+      }
+      user.password = password;
+      await user.save();
+      return res.status(200).json({ message: 'Password reset successfully' });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to initiate password reset', error });
+    }
+  },
   forgotPassword_sendOTP: async (req, res) => {
     try {
       const { email } = req.body;
@@ -135,9 +162,9 @@ const UserController = {
   },
   forgotPassword_verifyOTP: async (req, res) => {
     try {
-      const { email, otp, newPassword } = req.body;
-      if (!email || !otp || !newPassword) {
-        return res.status(400).json({ message: 'Email, OTP, and new password are required' });
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        return res.status(400).json({ message: 'Email, OTP are required' });
       }
       const user = await UserModel.findOne({ email });
       if (!user) {
@@ -146,11 +173,10 @@ const UserController = {
       if (!user.verifyOTP(otp)) {
         return res.status(400).json({ message: 'Invalid or expired OTP' });
       }
-      user.password = newPassword;
       user.otp = null;
       user.otpExpiry = null;
       await user.save();
-      return res.status(200).json({ message: 'Password reset successfully' });
+      return res.status(200).json({ message: 'OTP verified successfully' });
     } catch (error) {
       console.error(error);
       return res.status(500).json({ message: 'Failed to reset password', error });
@@ -247,6 +273,69 @@ const UserController = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ message: 'Streak monitoring failed', error });
+    }
+  },
+  updateEmail: async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      const { userId } = req.user;
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      if (!otp) {
+        // generate and send otp to new email
+        const generatedOTP = user.generateOTP();
+        await user.save();
+        await EmailService.sendOTPEmail(email, generatedOTP);
+        return res.status(200).json({ message: 'OTP sent to new email' });
+      }
+      if (!user.verifyOTP(otp)) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+      }
+
+      const isExistingUser = await UserModel.findOne({ email });
+      if (isExistingUser) {
+        return res.status(400).json({ message: 'Email is already in use by another account' });
+      }
+
+      user.email = email;
+      user.otp = null;
+      user.otpExpiry = null;
+      await user.save();
+      // let's generate new token after email update
+      const token = user.generateAuthToken();
+      return res.status(200).json({ message: 'Email updated successfully', email: user.email, token });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to update email', error });
+    }
+  },
+  deleteAccount: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const { otp } = req.body;
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      if (!otp) {
+        const generatedOTP = user.generateOTP();
+        await user.save();
+        await EmailService.sendOTPEmail(user.email, generatedOTP);
+        return res.status(200).json({ message: 'OTP sent to your email. Please verify to delete account.' });
+      }
+      if (!user.verifyOTP(otp)) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+      }
+      await UserModel.findByIdAndDelete(userId);
+      // lets delete all submissions by user as well
+      await submissionModel.deleteMany({ userId });
+      return res.status(200).json({ message: 'Account deleted successfully' });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: 'Failed to delete account', error });
     }
   }
 };

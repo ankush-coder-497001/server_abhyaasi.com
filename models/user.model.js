@@ -28,6 +28,7 @@ const UserSchema = new Schema({
       date: { type: String },
     }
   ],
+  isOauthUser: { type: Boolean, default: false },
   currentCourse: { type: Schema.Types.ObjectId, ref: 'Course' },
   currentModule: { type: Schema.Types.ObjectId, ref: 'Module' },
   completedCourses: [{ type: Schema.Types.ObjectId, ref: 'Course' }],
