@@ -78,6 +78,21 @@ const CourseController = {
       res.status(500).json({ message: 'Server error', error });
     }
   },
+
+  getALL: async (req, res) => {
+    try {
+      // we are not sending the correct answers from modules of mcq
+      const courses = await CourseModel.find({}).populate({
+        path: 'modules',
+        select: '-mcqs.correctOptionIndex'
+      }).populate('createdBy', 'name email');
+      res.json(courses);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error', error });
+    }
+  },
+
   getCourseBySlug: async (req, res) => {
     try {
       const courseSlug = req.params.slug;
