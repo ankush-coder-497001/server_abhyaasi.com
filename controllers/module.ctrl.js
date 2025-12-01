@@ -9,7 +9,7 @@ const courseModel = require('../models/course.model');
 const Module_controller = {
   create_module: async (req, res) => {
     try {
-      const { title, courseId, topics, theory, mcqs, codingTask, interviewQuestions } = req.body;
+      const { title, courseId, topics, theoryNotes, mcqs, codingTask, interviewQuestions, published } = req.body;
       const GetLastModule = await Module_Model.findOne({ courseId }).sort({ order: -1 });
       const order = GetLastModule ? GetLastModule.order + 1 : 1;
       const newModule = new Module_Model({
@@ -17,10 +17,11 @@ const Module_controller = {
         courseId,
         order,
         topics,
-        theoryNotes: theory,
+        theoryNotes: theoryNotes,
         mcqs,
         codingTask,
-        interviewQuestions
+        interviewQuestions,
+        published
       });
       await newModule.save();
 

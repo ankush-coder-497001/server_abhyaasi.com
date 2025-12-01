@@ -9,7 +9,7 @@ const CourseController = {
 
       const course = await CourseModel.findById(courseId).populate('modules');
 
-      if (!course.isPublished) {
+      if (course.status !== 'published') {
         return res.status(403).json({ message: "this course is not published yet" })
       }
 
@@ -68,7 +68,7 @@ const CourseController = {
   getAllCourses: async (req, res) => {
     try {
       // we are not sending the correct answers from modules of mcq
-      const courses = await CourseModel.find({ isPublished: true }).populate({
+      const courses = await CourseModel.find({ status: 'published' }).populate({
         path: 'modules',
         select: '-mcqs.correctOptionIndex'
       }).populate('createdBy', 'name email');
