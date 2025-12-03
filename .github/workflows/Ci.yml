@@ -1,0 +1,38 @@
+name: Node.js CI
+
+on:
+ push:
+    branches:
+     - main
+ pull_request:
+    branches:
+     - main
+
+jobs:
+ build:
+   runs-on: ubuntu-latest
+
+   steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+
+      - name: setup node.js
+        uses: actions/setup-node@v3
+        with: 
+          node-version: "18"
+
+      - name: install dependencies
+        run: npm install
+
+      - name: Run Tests
+        run: npm test
+
+      - name: Build project
+        if: success()
+        run: |
+            if [ -f package.json ] && grep -q "\"build\"" package.json; then
+              npm run build
+            else
+              echo "No build script found, skipping build."
+            fi
+

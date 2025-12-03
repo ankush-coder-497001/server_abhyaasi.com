@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "jest",
+    "build": "node build.js"
   },
   "author": "",
   "license": "ISC",
@@ -29,6 +31,7 @@
     "xss-clean": "^0.1.4"
   },
   "devDependencies": {
+    "jest": "^30.2.0",
     "nodemon": "^3.0.2"
   }
 }

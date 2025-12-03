@@ -2,7 +2,7 @@ const moduleModel = require("../models/module.model");
 const Profession = require("../models/profession.model");
 const userModel = require("../models/user.model");
 const Profession_controller = {
-  create_profession: (req, res) => {
+  create_profession: async (req, res) => {
     try {
       const { name, description, thumbnail, estimatedDuration } = req.body;
       if (!name || !description || !thumbnail || !estimatedDuration) {
@@ -17,7 +17,7 @@ const Profession_controller = {
         courses: [],
         tags: req.body.tags || [],
       });
-      newProfession.save();
+      await newProfession.save();
       res.status(201).json({
         message: "Profession created successfully",
         profession: newProfession,
@@ -230,9 +230,8 @@ const Profession_controller = {
       profession.isPublished = profession.isPublished ? false : true;
       await profession.save();
       res.status(200).json({
-        message: `profession is ${
-          profession.isPublished ? "published" : "archived"
-        }`,
+        message: `profession is ${profession.isPublished ? "published" : "archived"
+          }`,
       });
     } catch (error) {
       console.error(error.message);
