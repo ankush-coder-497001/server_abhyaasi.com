@@ -1,4 +1,5 @@
 const CourseModel = require('../models/course.model');
+const submissionModel = require('../models/submission.model');
 const UserModel = require('../models/user.model');
 const CourseController = {
   enrollInCourse: async (req, res) => {
@@ -56,6 +57,9 @@ const CourseController = {
       if (user.currentProfession) {
         return res.status(400).json({ message: 'Cannot unenroll from course while enrolled in a profession. Please unenroll from the profession first.' });
       }
+
+      // remove all the submissions related to this course for user
+      await submissionModel.deleteMany({ userId: user._id, courseId: user.currentCourse });
       user.currentCourse = null;
       user.currentModule = null;
       await user.save();
