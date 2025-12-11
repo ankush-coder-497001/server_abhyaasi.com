@@ -6,6 +6,7 @@ const User_Model = require('../models/user.model');
 const { trusted } = require('mongoose');
 const Certificate_service = require('../services/certificate.svc');
 const courseModel = require('../models/course.model');
+const Profession_Model = require('../models/profession.model');
 const Module_controller = {
   create_module: async (req, res) => {
     try {
@@ -90,8 +91,6 @@ const Module_controller = {
         });
       }
 
-
-
       // Get previous attempt number
       const lastSubmission = await Submission_Model.findOne({
         userId,
@@ -111,7 +110,7 @@ const Module_controller = {
         submission = new Submission_Model({
           userId,
           moduleId,
-          courseId: module.courseId,
+          courseId: Module_model.courseId,
           type: 'code',
           payload: { code, language },
           status: 'running',
@@ -141,16 +140,22 @@ const Module_controller = {
             testcaseId: testCase._id,
             passed,
             output: result.output,
-            error: result.error
+            error: result.error,
+            input: testCase.input,
+            expectedOutput: testCase.expectedOutput,
+            hidden: testCase.hidden || false
           });
 
           if (passed) passedTests++;
         } catch (error) {
           testResults.push({
-            testcaseId: testCase.id,
+            testcaseId: testCase._id,
             passed: false,
             output: null,
-            error: error.message
+            error: error.message,
+            input: testCase.input,
+            expectedOutput: testCase.expectedOutput,
+            hidden: testCase.hidden || false
           });
         }
       }
@@ -167,17 +172,18 @@ const Module_controller = {
 
       // Filter out hidden test case details
       const visibleResults = testResults.map(result => {
-        const testCase = Module_model.codingTask.testcases.find(t => t._id === result.testcaseId);
-        if (testCase && testCase.hidden) {
+        if (result.hidden) {
+          // For hidden tests, only show pass/fail status
           return {
             testcaseId: result.testcaseId,
-            passed: result.passed
+            passed: result.passed,
+            hidden: true
           };
         }
+        // For visible tests, show all details
         return result;
       });
 
-      console.log(submission)
 
 
       if (submission.status === 'passed') {
@@ -261,11 +267,11 @@ const Module_controller = {
                 _id: course._id
               }
 
-              const res = await Certificate_service.generateCertificate(userModel, certificateData);
-              if (res.status === 'error') {
-                console.error('Certificate generation error:', res.error);
+              const result = await Certificate_service.generateCertificate(userModel, certificateData);
+              if (result.status === 'error') {
+                console.error('Certificate generation error:', result.error);
               } else {
-                userModel.certificates.push(res.pdfUrl);
+                userModel.certificates.push(result.pdfUrl);
               }
               await userModel.save();
 
@@ -293,12 +299,12 @@ const Module_controller = {
               completedAt: new Date(),
               _id: course._id
             }
-            const res = await Certificate_service.generateCertificate(userModel, certificateData);
-            if (res.error) {
-              console.error('Certificate generation error:', res.error);
+            const result = await Certificate_service.generateCertificate(userModel, certificateData);
+            if (result.error) {
+              console.error('Certificate generation error:', result.error);
             } else {
 
-              userModel.certificates.push(res.pdfUrl);
+              userModel.certificates.push(result.pdfUrl);
             }
             userModel.completedCourses.push(course._id);
             await userModel.save();
@@ -317,6 +323,19 @@ const Module_controller = {
           }
           userModel.currentModule = nextModule ? nextModule._id : null;
           await userModel.save();
+          // Module is completed - both MCQ and Code passed
+          return res.status(200).json({
+            status: 'success',
+            message: 'Module completed! Moving to next module.',
+            data: {
+              isModuleCompleted: true,
+              submissionId: submission._id,
+              status: submission.status,
+              score: submission.score,
+              testResults: visibleResults,
+              cooldownUntil: submission.cooldownUntil
+            }
+          });
         }
       }
 
@@ -344,6 +363,8 @@ const Module_controller = {
   get_module: async (req, res) => {
     try {
       const { moduleId } = req.params;
+      const { userId } = req.user;
+
       // check the module is locked or not
       const Module = await Module_Model.findById(moduleId).select('-mcqs.correctOptionIndex');
       if (!Module) {
@@ -358,10 +379,100 @@ const Module_controller = {
           message: 'Module is locked'
         });
       }
+
+      // Get completion status from Submission model
+      let isMcqCompleted = false;
+      let isCodingCompleted = false;
+      let mcqScore = 0;
+      let codingScore = 0;
+      let mcqCooldown = null;
+      let codingCooldown = null;
+      let mcqAttemptsLeft = null;
+      let codingAttemptsLeft = null;
+
+      if (userId) {
+        const mcqSubmission = await Submission_Model.findOne({
+          userId,
+          moduleId,
+          type: 'mcq',
+          status: 'passed'
+        });
+
+        const codingSubmission = await Submission_Model.findOne({
+          userId,
+          moduleId,
+          type: 'code',
+          status: 'passed'
+        });
+
+        // Get latest MCQ submission (passed or failed) for cooldown info
+        const latestMcqSubmission = await Submission_Model.findOne({
+          userId,
+          moduleId,
+          type: 'mcq'
+        }).sort({ createdAt: -1 });
+
+        // Get latest Coding submission (passed or failed) for cooldown info
+        const latestCodingSubmission = await Submission_Model.findOne({
+          userId,
+          moduleId,
+          type: 'code'
+        }).sort({ createdAt: -1 });
+
+        isMcqCompleted = !!mcqSubmission;
+        isCodingCompleted = !!codingSubmission;
+        mcqScore = mcqSubmission ? mcqSubmission.score : 0;
+        codingScore = codingSubmission ? codingSubmission.score : 0;
+
+        // Check MCQ cooldown
+        if (latestMcqSubmission && latestMcqSubmission.cooldownUntil) {
+          mcqCooldown = {
+            isInCooldown: latestMcqSubmission.cooldownUntil > new Date(),
+            cooldownUntil: latestMcqSubmission.cooldownUntil,
+            cooldownRemainingSeconds: Math.ceil((latestMcqSubmission.cooldownUntil - new Date()) / 1000),
+            attemptNumber: latestMcqSubmission.attemptNumber
+          };
+        }
+
+        // Check Coding cooldown
+        if (latestCodingSubmission && latestCodingSubmission.cooldownUntil) {
+          codingCooldown = {
+            isInCooldown: latestCodingSubmission.cooldownUntil > new Date(),
+            cooldownUntil: latestCodingSubmission.cooldownUntil,
+            cooldownRemainingSeconds: Math.ceil((latestCodingSubmission.cooldownUntil - new Date()) / 1000),
+            attemptNumber: latestCodingSubmission.attemptNumber
+          };
+        }
+
+        // Calculate attempts left for MCQ
+        if (latestMcqSubmission && Module.mcqs.length > 0) {
+          const mcqWithMaxAttempts = Module.mcqs.find(mcq => mcq.maxAttempts !== undefined);
+          if (mcqWithMaxAttempts && mcqWithMaxAttempts.maxAttempts) {
+            mcqAttemptsLeft = Math.max(0, mcqWithMaxAttempts.maxAttempts - latestMcqSubmission.attemptNumber);
+          }
+        }
+
+        // Calculate attempts left for Coding (based on module's max attempts if defined)
+        if (latestCodingSubmission && Module.codingTask && Module.codingTask.maxAttempts) {
+          codingAttemptsLeft = Math.max(0, Module.codingTask.maxAttempts - latestCodingSubmission.attemptNumber);
+        }
+      }
+
       res.status(200).json({
         status: 'success',
         message: 'Module retrieved successfully',
-        data: Module
+        data: {
+          ...Module.toObject ? Module.toObject() : Module,
+          isMcqCompleted,
+          isCodingCompleted,
+          mcqScore,
+          codingScore,
+          isModuleCompleted: isMcqCompleted && isCodingCompleted,
+          mcqCooldown,
+          codingCooldown,
+          mcqAttemptsLeft,
+          codingAttemptsLeft
+        }
       });
     } catch (error) {
       console.error(' Error in get_module:', error);
@@ -432,7 +543,7 @@ const Module_controller = {
 
       if (existingSubmission && existingSubmission.cooldownUntil && existingSubmission.cooldownUntil > new Date()) {
         return res.status(403).json({
-          status: 'error',
+          status: 403,
           message: `You are on cooldown. Next attempt available at ${existingSubmission.cooldownUntil}`
         });
       } else {
@@ -461,19 +572,21 @@ const Module_controller = {
       );
 
       if (mcqWithExhaustedAttempts) {
-
-        submission.cooldownUntil = new Date(Date.now() + 60 * 60000); // 1 hour cooldown
-        await submission.save();
+        // Set cooldown on existing submission instead of undefined submission
+        if (existingSubmission) {
+          existingSubmission.cooldownUntil = new Date(Date.now() + 60 * 60000); // 1 hour cooldown
+          await existingSubmission.save();
+        }
 
         return res.status(403).json({
-          status: 'error',
+          status: 403,
           message: 'Maximum attempts reached for one or more MCQs'
         });
       }
 
       if (Module_model.mcqs.length === 0) {
         return res.status(400).json({
-          status: 'error',
+          status: 400,
           message: 'No MCQs available for this module'
         });
       }
@@ -488,7 +601,7 @@ const Module_controller = {
 
       if (successfulSubmission) {
         return res.status(403).json({
-          status: 'error',
+          status: 403,
           message: 'MCQs already completed successfully for this module'
         });
       }
@@ -679,6 +792,20 @@ const Module_controller = {
           }
           user.currentModule = nextModule ? nextModule._id : null;
           await user.save();
+          // Module is completed - both MCQ and Code passed
+          return res.status(200).json({
+            status: 'success',
+            message: 'Module completed! Moving to next module.',
+            data: {
+              isModuleCompleted: true,
+              submissionId: submission._id,
+              score: submission.score,
+              totalQuestions: Module_model.mcqs.length,
+              passed: isPassed,
+              results,
+              attemptNumber: attemptCount
+            }
+          });
         }
       }
 

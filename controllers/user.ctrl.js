@@ -58,8 +58,9 @@ const UserController = {
       let user = await UserModel.findOne({ email });
       if (!user) {
         user = new UserModel({ name, email, password: Math.random().toString(36).slice(-8), isOauthUser: true });
+        const token = user.generateAuthToken();
         await user.save();
-        return res.status(201).json({ message: 'User registered via Google Auth successfully', user });
+        return res.status(201).json({ message: 'User registered via Google Auth successfully', user, token });
       }
       if (!user.isOauthUser) {
         return res.status(400).json({ message: 'Email already registered without OAuth. Please login using email and password.' });
@@ -228,16 +229,70 @@ const UserController = {
   get_user: async (req, res) => {
     try {
       const { userId } = req.user;
-      const user = await UserModel.findById(userId).select('-password -otp -otpExpiry');
+      const user = await UserModel.findById(userId)
+        .select('-password -otp -otpExpiry')
+        .populate({
+          path: 'currentCourse',
+          select: 'title description duration modules',
+          populate: {
+            path: 'modules',
+            select: '_id title order topics isMcqCompleted isCodingCompleted'
+          }
+        })
+        .populate('currentModule', 'title order topics');
+
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-      // let's calculate rank based on points 
-      //  from submissions
-      const submissions = await submissionModel.find({ userId });
-      const totalPoints = submissions.reduce((acc, sub) => acc + sub.points, 0);
+
+      // If user has a current course, fetch module completion status
+      if (user.currentCourse && user.currentCourse.modules) {
+        const submissionModel = require('../models/submission.model');
+        const moduleProgress = [];
+
+        for (const module of user.currentCourse.modules) {
+          const moduleId = typeof module === 'object' ? module._id : module;
+
+          const mcqSubmission = await submissionModel.findOne({
+            userId,
+            moduleId,
+            type: 'mcq',
+            status: 'passed'
+          });
+
+          const codingSubmission = await submissionModel.findOne({
+            userId,
+            moduleId,
+            type: 'code',
+            status: 'passed'
+          });
+
+          moduleProgress.push({
+            moduleId,
+            isMcqCompleted: !!mcqSubmission,
+            isCodingCompleted: !!codingSubmission,
+            mcqScore: mcqSubmission?.score || 0,
+            codingScore: codingSubmission?.score || 0
+          });
+        }
+
+        user._doc.moduleProgress = moduleProgress;
+      }
+
+      // let's calculate rank based on points from passed submissions
+      // Get all passed/completed submissions for the user
+      const submissions = await submissionModel.find({
+        userId,
+        status: { $in: ['passed', 'completed'] }
+      });
+
+      // Calculate total points from submission scores
+      const totalPoints = submissions.reduce((acc, sub) => {
+        return acc + (sub.score || 0);
+      }, 0);
+
       user.rank = calculateRank(totalPoints);
-      user.points = totalPoints || 0;
+      user.points = totalPoints;
       await user.save();
       return res.status(200).json({ profile: user });
     } catch (error) {
@@ -261,17 +316,30 @@ const UserController = {
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
-      const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd
-      const alreadyTracked = user.activityHistory.some(
-        (entry) => entry.date === today
-      )
-      if (!alreadyTracked) {
-        user.activityHistory.push({ date: today });
-        await user.save();
+
+      // Get today's date in UTC (yyyy-mm-dd format)
+      const today = new Date().toISOString().split("T")[0];
+
+      // Check if activity for today already exists
+      const alreadyTracked = user.activityHistory && user.activityHistory.some(
+        (entry) => entry.date && entry.date.trim() === today
+      );
+
+      if (alreadyTracked) {
+        // Activity already tracked for today
+        return res.status(200).json({ message: 'Activity already tracked for today' });
       }
+
+      // Add today's activity
+      if (!user.activityHistory) {
+        user.activityHistory = [];
+      }
+      user.activityHistory.push({ date: today });
+      await user.save();
+
       return res.status(200).json({ message: 'Activity tracked successfully' });
     } catch (error) {
-      console.error(error);
+      console.error('Track Activity Error:', error);
       return res.status(500).json({ message: 'Streak monitoring failed', error });
     }
   },
