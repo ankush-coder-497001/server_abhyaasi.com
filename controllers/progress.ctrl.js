@@ -46,16 +46,20 @@ const Progress_controller = {
   generate_overall_progress_report: async (req, res) => {
     try {
       const userId = req.user.userId;
-      const user = await User_model.findById(userId).populate('completedCourses');
-      const completedCourses = user.completedCourses || [];
+      const user = await User_model.findById(userId).populate('completedCourses.courseId');
+      const completedCoursesData = user.completedCourses || [];
       let overallCompletedModules = 0;
       let overallTotalModules = 0;
       let overallTotalScore = 0;
       let overallAverageScore = 0;
       let overallCompletionPercentage = 0;
-      for (const course of completedCourses) {
-        const modules = await Module_model.find({ course: course._id }).sort({ order: 1 });
-        const submissions = await Submit_model.find({ userId, courseId: course._id, status: 'passed' });
+
+      for (const completedCourseData of completedCoursesData) {
+        // Handle both old format (direct course) and new format (courseId reference)
+        const course = completedCourseData.courseId || completedCourseData;
+        const courseId = course._id || course;
+        const modules = await Module_model.find({ course: courseId }).sort({ order: 1 });
+        const submissions = await Submit_model.find({ userId, courseId: courseId, status: 'passed' });
         let completedModules = 0;
         let totalScore = 0;
         for (const module of modules) {
