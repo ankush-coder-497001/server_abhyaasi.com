@@ -14,6 +14,7 @@ const SubmissionSchema = new Schema({
   moduleId: { type: Schema.Types.ObjectId, ref: 'Module', required: true },
   type: { type: String, enum: ['mcq', 'code'], required: true },
   payload: { type: Schema.Types.Mixed }, // project files meta or mcq answers
+  currentCode: { type: String }, // Store the latest user code submission
   status: { type: String, enum: ['pending', 'running', 'passed', 'failed', 'blocked', 'needs_review'], default: 'pending' },
   score: { type: Number }, // 0..100
   attemptNumber: { type: Number, default: 1 },

@@ -7,6 +7,8 @@ const { trusted } = require('mongoose');
 const Certificate_service = require('../services/certificate.svc');
 const courseModel = require('../models/course.model');
 const Profession_Model = require('../models/profession.model');
+const POINTS = require('../constants/points');
+
 const Module_controller = {
   create_module: async (req, res) => {
     try {
@@ -73,9 +75,12 @@ const Module_controller = {
       const { code, language } = req.body;
       const userId = req.user.userId;
 
-      // Get module details
+      console.log('[SUBMIT_CODE] moduleId:', moduleId);
+      console.log('[SUBMIT_CODE] userId:', userId);
+
       const Module_model = await Module_Model.findById(moduleId);
       const userModel = await User_Model.findById(userId);
+
       if (!Module_model || !Module_model.codingTask) {
         return res.status(404).json({
           status: 'error',
@@ -83,45 +88,54 @@ const Module_controller = {
         });
       }
 
-      // Validate language support
+      console.log('[MODULE]', {
+        moduleId: Module_model._id,
+        courseId: Module_model.courseId,
+        order: Module_model.order
+      });
+
       if (!Module_model.codingTask.languages.includes(language)) {
         return res.status(400).json({
           status: 'error',
-          message: 'Language not supported for this task'
+          message: 'Language not supported'
         });
       }
 
-      // Get previous attempt number
+      // ---------------- Submission handling ----------------
       const lastSubmission = await Submission_Model.findOne({
         userId,
         moduleId,
         type: 'code'
       }).sort({ createdAt: -1 });
 
-      const attemptNumber = lastSubmission ? lastSubmission.attemptNumber + 1 : 1;
       let submission;
+      const attemptNumber = lastSubmission ? lastSubmission.attemptNumber + 1 : 1;
+
       if (lastSubmission) {
-        lastSubmission.lastAttemptAt = new Date();
-        lastSubmission.payload = { code, language };
-        lastSubmission.status = 'running';
         submission = lastSubmission;
+        submission.lastAttemptAt = new Date();
+        submission.payload = { code, language };
+        submission.currentCode = code;
+        submission.status = 'running';
       } else {
-        // Create new submission
         submission = new Submission_Model({
           userId,
           moduleId,
           courseId: Module_model.courseId,
           type: 'code',
           payload: { code, language },
+          currentCode: code,
           status: 'running',
           attemptNumber
         });
       }
+
       await submission.save();
-      // Run test cases
-      const testResults = [];
+
+      // ---------------- Run test cases ----------------
       let totalTests = 0;
       let passedTests = 0;
+      const testResults = [];
 
       for (const testCase of Module_model.codingTask.testcases) {
         totalTests++;
@@ -133,8 +147,14 @@ const Module_controller = {
             Module_model.codingTask.timeoutSeconds
           );
 
-          const passed = !result.error &&
-            codeExecutionService.validateOutput(result.output, testCase.expectedOutput);
+          const passed =
+            !result.error &&
+            codeExecutionService.validateOutput(
+              result.output,
+              testCase.expectedOutput
+            );
+
+          if (passed) passedTests++;
 
           testResults.push({
             testcaseId: testCase._id,
@@ -145,50 +165,47 @@ const Module_controller = {
             expectedOutput: testCase.expectedOutput,
             hidden: testCase.hidden || false
           });
-
-          if (passed) passedTests++;
-        } catch (error) {
+        } catch (err) {
           testResults.push({
             testcaseId: testCase._id,
             passed: false,
             output: null,
-            error: error.message,
-            input: testCase.input,
-            expectedOutput: testCase.expectedOutput,
+            error: err.message,
             hidden: testCase.hidden || false
           });
         }
       }
 
-      // Update submission with results
       submission.status = passedTests === totalTests ? 'passed' : 'failed';
       submission.score = (passedTests / totalTests) * 100;
-      submission.runResult = {
-        testResults
-      };
-
-
+      submission.runResult = { testResults };
       await submission.save();
 
-      // Filter out hidden test case details
-      const visibleResults = testResults.map(result => {
-        if (result.hidden) {
-          // For hidden tests, only show pass/fail status
+      // Format visible results - always show test case details but hide sensitive info for hidden tests that fail
+      const visibleResults = testResults.map(r => {
+        if (r.hidden && !r.passed) {
+          // For hidden tests that failed, only show pass/fail status and generic error message
           return {
-            testcaseId: result.testcaseId,
-            passed: result.passed,
-            hidden: true
+            testcaseId: r.testcaseId,
+            passed: r.passed,
+            hidden: true,
+            error: r.error ? 'Test execution failed' : null
           };
         }
-        // For visible tests, show all details
-        return result;
+        // For public tests or hidden tests that passed, show all details
+        return {
+          testcaseId: r.testcaseId,
+          passed: r.passed,
+          input: r.input,
+          expectedOutput: r.expectedOutput,
+          actualOutput: r.output,
+          error: r.error,
+          hidden: r.hidden || false
+        };
       });
 
-
-
+      // ---------------- If code passed ----------------
       if (submission.status === 'passed') {
-
-        // now check is the mcq is also completed then lets mark the module as completed
         const mcqSubmission = await Submission_Model.findOne({
           userId,
           moduleId,
@@ -196,170 +213,184 @@ const Module_controller = {
           status: 'passed'
         });
 
+        console.log('[MCQ]', mcqSubmission ? 'PASSED' : 'NOT PASSED');
+
         if (mcqSubmission) {
-          // means this module is completed 
-          // lets find out next module and unlock it for the user
-          const course = await Course_Model.findById(Module_model.courseId).populate('modules');
-          const nextModule = course.modules.find(m => m.order === Module_model.order + 1);
+          const course = await Course_Model
+            .findById(Module_model.courseId)
+            .populate('modules');
+
+          const nextModule = course.modules.find(
+            m => m.order === Module_model.order + 1
+          );
+
+          console.log('[NEXT MODULE]', nextModule?._id || 'NONE');
+
+          // ================= COURSE COMPLETED =================
           if (!nextModule) {
-            // no next module it means we have completed all the modules in the course 
+            console.log('[COURSE COMPLETED]', course.title);
 
-            // lets check if we are enrolled in a profession if enrolled then check if we have next course in the profession 
-            let nextCourseInProfession;
-            let nextModuleInNextCourse;
-            if (userModel.currentProfession) {
-              const profession = await Profession_Model.findById(userModel.currentProfession).populate('courses');
-              const currentCourseIndex = profession.courses.findIndex(c => c.course.toString() === course._id.toString());
-              nextCourseInProfession = profession.courses.find(c => c.order === currentCourseIndex + 1);
-              if (!nextCourseInProfession) {
-                // no next course that mean we have completed the profession lets cross check 
-                let success = true;
-                for (const profCourse of profession.courses) {
-                  const isCompleted = userModel.completedCourses.some(cc => cc.toString() === profCourse.course.toString());
-                  if (!isCompleted) {
-                    nextCourseInProfession = profCourse;
-                    success = false;
-                    break;
-                  }
-                }
-                if (success) {
-                  const certificateData = {
-                    title: profession.name,
-                    completedAt: new Date(),
-                    _id: profession._id
-                  }
+            // ✅ Mark course as completed (IMPORTANT FIX)
+            const alreadyCompleted = userModel.completedCourses.some(
+              cc => cc.courseId.toString() === course._id.toString()
+            );
 
-                  const res = await Certificate_service.generateCertificate(userModel, certificateData);
-                  if (res.status === 'error') {
-                    console.error('Certificate generation error:', res.error);
-                  } else {
-                    userModel.certificates.push(res.pdfUrl);
-                  }
-
-                  // user has completed the profession 
-                  userModel.enrolledProfessions.push(userModel.currentProfession);
-                  userModel.currentProfession = null;
-                  userModel.currentCourse = null;
-                  userModel.currentModule = null;
-                  await userModel.save();
-                  return res.status(200).json({
-                    status: 'success',
-                    message: 'Congratulations! You have completed the entire profession.',
-                    data: {
-                      isProfessionCompleted: true,
-                      submissionId: submission._id,
-                      status: submission.status,
-                      score: submission.score,
-                      testResults: visibleResults,
-                      cooldownUntil: submission.cooldownUntil
-                    }
-                  });
-                }
-              }
-
-              nextModuleInNextCourse = await Module_Model.findOne({ course: nextCourseInProfession.course }).sort({ order: 1 });
-              userModel.currentModule = nextModuleInNextCourse ? nextModuleInNextCourse._id : null;
-              userModel.currentCourse = nextCourseInProfession ? nextCourseInProfession.course : null;
+            if (!alreadyCompleted) {
+              console.log('[COURSE COMPLETION] Saving + generating certificate');
 
               const certificateData = {
                 title: course.title,
                 completedAt: new Date(),
                 _id: course._id
-              }
+              };
 
-              const result = await Certificate_service.generateCertificate(userModel, certificateData);
-              if (result.status === 'error') {
-                console.error('Certificate generation error:', result.error);
-              } else {
-                userModel.certificates.push(result.pdfUrl);
-              }
-              await userModel.save();
+              const cert = await Certificate_service.generateCertificate(
+                userModel,
+                certificateData
+              );
 
-              return res.status(200).json({
-                status: 'success',
-                message: 'All tests passed! Moved to next course in profession.',
-                data: {
-                  submissionId: submission._id,
-                  status: submission.status,
-                  score: submission.score,
-                  testResults: visibleResults,
-                  cooldownUntil: submission.cooldownUntil
-                }
+              userModel.completedCourses.push({
+                courseId: course._id,
+                completedDate: new Date(),
+                points: POINTS.COURSE_COMPLETION,
+                certificate: !!cert?.pdfUrl,
+                certificateUrl: cert?.pdfUrl,
+                certificatePdfUrl: cert?.pdfUrl,
+                certificateImageUrl: cert?.imageUrl
               });
-
             }
 
+            // ================= PROFESSION FLOW =================
+            if (userModel.currentProfession) {
+              const profession = await Profession_Model
+                .findById(userModel.currentProfession)
+                .populate('courses.course');
+
+              console.log('[PROFESSION COURSES]');
+              profession.courses.forEach(c =>
+                console.log({
+                  order: c.order,
+                  title: c.course.title
+                })
+              );
+
+              const currentCourseObj = profession.courses.find(
+                c => c.course._id.toString() === course._id.toString()
+              );
+
+              const nextCourseInProfession = profession.courses.find(
+                c => c.order === currentCourseObj.order + 1
+              );
+
+              console.log(
+                '[NEXT COURSE]',
+                nextCourseInProfession?.course?.title || 'NONE'
+              );
+
+              if (nextCourseInProfession) {
+                const nextModuleInNextCourse = await Module_Model
+                  .findOne({ courseId: nextCourseInProfession.course._id })
+                  .sort({ order: 1 });
+
+                userModel.currentCourse =
+                  nextCourseInProfession.course._id;
+                userModel.currentModule =
+                  nextModuleInNextCourse?._id || null;
+
+                await userModel.save();
+
+                return res.status(200).json({
+                  status: 'success',
+                  message: 'Course completed. Moved to next course.',
+                  data: {
+                    isCourseCompleted: true,
+                    testResults: visibleResults
+                  }
+                });
+              }
+
+              // ================= PROFESSION COMPLETED =================
+              console.log('[PROFESSION COMPLETED]');
+
+              // Generate certificate for profession (profession already fetched above)
+              const profCert = profession ? await Certificate_service.generateCertificate(
+                userModel,
+                {
+                  title: profession.name || 'Profession',
+                  completedAt: new Date(),
+                  _id: profession._id
+                }
+              ) : null;
+
+              userModel.completedProfessions.push({
+                professionId: userModel.currentProfession,
+                completedDate: new Date(),
+                points: POINTS.PROFESSION_COMPLETION,
+                certificate: !!profCert?.pdfUrl,
+                certificateUrl: profCert?.pdfUrl,
+                certificatePdfUrl: profCert?.pdfUrl,
+                certificateImageUrl: profCert?.imageUrl
+              });
+
+              userModel.currentProfession = null;
+            }
 
             userModel.currentCourse = null;
             userModel.currentModule = null;
-
-            // lets generate the ceretificate here
-            const certificateData = {
-              title: course.title,
-              completedAt: new Date(),
-              _id: course._id
-            }
-            const result = await Certificate_service.generateCertificate(userModel, certificateData);
-            if (result.error) {
-              console.error('Certificate generation error:', result.error);
-            } else {
-
-              userModel.certificates.push(result.pdfUrl);
-            }
-            userModel.completedCourses.push(course._id);
             await userModel.save();
+
             return res.status(200).json({
               status: 'success',
-              message: 'Congratulations! You have completed all modules in this course.',
-              data: {
-                isCourseCompleted: true,
-                submissionId: submission._id,
-                status: submission.status,
-                score: submission.score,
-                testResults: visibleResults,
-                cooldownUntil: submission.cooldownUntil
-              }
+              message: 'Course completed successfully',
+              data: { isCourseCompleted: true }
             });
           }
-          userModel.currentModule = nextModule ? nextModule._id : null;
+
+          // ================= MOVE TO NEXT MODULE =================
+          userModel.currentModule = nextModule._id;
           await userModel.save();
-          // Module is completed - both MCQ and Code passed
+
           return res.status(200).json({
             status: 'success',
-            message: 'Module completed! Moving to next module.',
-            data: {
-              isModuleCompleted: true,
-              submissionId: submission._id,
-              status: submission.status,
-              score: submission.score,
-              testResults: visibleResults,
-              cooldownUntil: submission.cooldownUntil
-            }
+            message: 'Module completed. Moving to next module.',
+            data: { isModuleCompleted: true }
           });
         }
       }
 
-      res.status(200).json({
+      // ---------------- Default response ----------------
+      return res.status(200).json({
         status: 'success',
-        message: submission.status === 'passed' ? 'All tests passed!' : 'Some tests failed',
+        message:
+          submission.status === 'passed'
+            ? 'All tests passed'
+            : `${passedTests}/${totalTests} tests passed`,
         data: {
           submissionId: submission._id,
           status: submission.status,
           score: submission.score,
+          passedTests,
+          totalTests,
           testResults: visibleResults,
-          cooldownUntil: submission.cooldownUntil
+          summary: {
+            totalTestCases: totalTests,
+            passedTestCases: passedTests,
+            failedTestCases: totalTests - passedTests,
+            successPercentage: submission.score
+          }
         }
       });
 
     } catch (error) {
-      console.error('Error in submit_code:', error);
+      console.error('[SUBMIT_CODE ERROR]', error);
       res.status(500).json({
         status: 'error',
         message: 'Failed to process code submission'
       });
     }
+  }
+  ,
 
-  },
   get_module: async (req, res) => {
     try {
       const { moduleId } = req.params;
@@ -389,6 +420,7 @@ const Module_controller = {
       let codingCooldown = null;
       let mcqAttemptsLeft = null;
       let codingAttemptsLeft = null;
+      let storedCode = null;
 
       if (userId) {
         const mcqSubmission = await Submission_Model.findOne({
@@ -412,7 +444,7 @@ const Module_controller = {
           type: 'mcq'
         }).sort({ createdAt: -1 });
 
-        // Get latest Coding submission (passed or failed) for cooldown info
+        // Get latest Coding submission (passed or failed) for cooldown info and stored code
         const latestCodingSubmission = await Submission_Model.findOne({
           userId,
           moduleId,
@@ -423,6 +455,11 @@ const Module_controller = {
         isCodingCompleted = !!codingSubmission;
         mcqScore = mcqSubmission ? mcqSubmission.score : 0;
         codingScore = codingSubmission ? codingSubmission.score : 0;
+
+        // Get stored code from latest submission
+        if (latestCodingSubmission && latestCodingSubmission.currentCode) {
+          storedCode = latestCodingSubmission.currentCode;
+        }
 
         // Check MCQ cooldown
         if (latestMcqSubmission && latestMcqSubmission.cooldownUntil) {
@@ -471,7 +508,8 @@ const Module_controller = {
           mcqCooldown,
           codingCooldown,
           mcqAttemptsLeft,
-          codingAttemptsLeft
+          codingAttemptsLeft,
+          storedCode
         }
       });
     } catch (error) {
@@ -515,330 +553,248 @@ const Module_controller = {
   submit_mcq: async (req, res) => {
     try {
       const { moduleId } = req.params;
-      const { answers } = req.body; // expecting an array of selected option indices
+      const { answers } = req.body;
       const { userId } = req.user;
 
-      const Module_model = await Module_Model.findById(moduleId);
-      if (!Module_model) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Module not found'
-        });
-      }
+      console.log('[SUBMIT_MCQ] moduleId:', moduleId);
+      console.log('[SUBMIT_MCQ] userId:', userId);
 
+      const module = await Module_Model.findById(moduleId);
       const user = await User_Model.findById(userId);
-      if (!user) {
+
+      if (!module || !user) {
         return res.status(404).json({
           status: 'error',
-          message: 'User not found'
+          message: 'Module or user not found'
         });
       }
 
-      // check for cooldown
+      // ---------------- Cooldown check ----------------
       const existingSubmission = await Submission_Model.findOne({
-        userId: req.user.userId,
+        userId,
         moduleId,
         type: 'mcq'
       }).sort({ createdAt: -1 });
 
-      if (existingSubmission && existingSubmission.cooldownUntil && existingSubmission.cooldownUntil > new Date()) {
+      if (
+        existingSubmission?.cooldownUntil &&
+        existingSubmission.cooldownUntil > new Date()
+      ) {
         return res.status(403).json({
           status: 403,
-          message: `You are on cooldown. Next attempt available at ${existingSubmission.cooldownUntil}`
+          message: `Cooldown active until ${existingSubmission.cooldownUntil}`
         });
-      } else {
-        // reset cooldown if passed cooldown time
-        if (existingSubmission && existingSubmission.cooldownUntil && existingSubmission.cooldownUntil <= new Date()) {
-          existingSubmission.cooldownUntil = null;
-          existingSubmission.attemptNumber = 0;
-          await existingSubmission.save();
-        }
       }
 
-
-      if (!Array.isArray(answers) || answers.length !== Module_model.mcqs.length) {
+      // ---------------- Validation ----------------
+      if (!Array.isArray(answers) || answers.length !== module.mcqs.length) {
         return res.status(400).json({
           status: 'error',
-          message: 'Invalid answer format. Please provide answers for all questions.'
+          message: 'Invalid answers format'
         });
       }
 
-      const totalAttempts = existingSubmission ? existingSubmission.attemptNumber : 0;
-      const attemptCount = totalAttempts ? totalAttempts + 1 : 1;
+      const attemptNumber = existingSubmission
+        ? existingSubmission.attemptNumber + 1
+        : 1;
 
-      // Check if max attempts reached for any MCQ
-      const mcqWithExhaustedAttempts = Module_model.mcqs.find(mcq =>
-        mcq.maxAttempts !== undefined && mcq.maxAttempts < attemptCount
-      );
-
-      if (mcqWithExhaustedAttempts) {
-        // Set cooldown on existing submission instead of undefined submission
-        if (existingSubmission) {
-          existingSubmission.cooldownUntil = new Date(Date.now() + 60 * 60000); // 1 hour cooldown
-          await existingSubmission.save();
-        }
-
-        return res.status(403).json({
-          status: 403,
-          message: 'Maximum attempts reached for one or more MCQs'
-        });
-      }
-
-      if (Module_model.mcqs.length === 0) {
-        return res.status(400).json({
-          status: 400,
-          message: 'No MCQs available for this module'
-        });
-      }
-
-      // Check if already completed successfully
-      const successfulSubmission = await Submission_Model.findOne({
-        userId: req.user.userId,
-        moduleId,
-        type: 'mcq',
-        status: 'passed'
-      });
-
-      if (successfulSubmission) {
-        return res.status(403).json({
-          status: 403,
-          message: 'MCQs already completed successfully for this module'
-        });
-      }
-
-
+      // ---------------- Scoring ----------------
       let score = 0;
-      let total = Module_model.mcqs.length * 5; // each question carries 5 marks
+      const totalMarks = module.mcqs.length * 5;
 
-      // Calculate score
-      const results = Module_model.mcqs.map((mcq, index) => {
+      const results = module.mcqs.map((mcq, index) => {
         const isCorrect = mcq.correctOptionIndex === answers[index];
         if (isCorrect) score += 5;
         return {
           questionId: mcq._id,
           isCorrect,
           userAnswer: answers[index],
-          // Only include correct answer in response if attempt failed
           correctAnswer: isCorrect ? undefined : mcq.correctOptionIndex,
           explanation: isCorrect ? undefined : mcq.explanation
         };
       });
 
-      const passingScore = 70; // 70% passing criteria
-      const isPassed = (score / total) * 100 >= passingScore;
+      const percentage = (score / totalMarks) * 100;
+      const isPassed = percentage >= 70;
 
-      let submission;
-      if (existingSubmission) {
-        // update existing submission
-        existingSubmission.payload = {
-          answers,
-          results
-        };
-        existingSubmission.status = isPassed ? 'passed' : 'failed';
-        existingSubmission.score = (score / total) * 100;
-        existingSubmission.attemptNumber = attemptCount;
-        submission = existingSubmission;
-      } else {
-        // Create submission record
-        submission = new Submission_Model({
-          userId: userId,
-          courseId: Module_model.courseId,
-          moduleId: moduleId,
-          type: 'mcq',
-          payload: {
-            answers,
-            results
-          },
-          status: isPassed ? 'passed' : 'failed',
-          score: (score / total) * 100,
-          attemptNumber: attemptCount
-        });
-      }
+      // ---------------- Save submission ----------------
+      let submission = existingSubmission || new Submission_Model({
+        userId,
+        moduleId,
+        courseId: module.courseId,
+        type: 'mcq'
+      });
+
+      submission.payload = { answers, results };
+      submission.status = isPassed ? 'passed' : 'failed';
+      submission.score = percentage;
+      submission.attemptNumber = attemptNumber;
+
       await submission.save();
 
-      // Update MCQ completion status if passed
+      // ---------------- If MCQ passed ----------------
       if (isPassed) {
-        // check if the coding task is also completed then mark the module as completed
-        const codingSubmission = await Submission_Model.findOne({
-          userId: req.user.userId,
+        const codeSubmission = await Submission_Model.findOne({
+          userId,
           moduleId,
           type: 'code',
           status: 'passed'
         });
-        if (codingSubmission) {
-          // means this module is completed 
-          // lets find out next module and unlock it for the user
-          const course = await Course_Model.findById(Module_model.courseId).populate('modules');
-          const nextModule = course.modules.find(m => m.order === Module_model.order + 1);
-          if (!nextModule && Module_model.isLastModule) {
-            // no next module it means we have completed all the modules in the course 
 
-            // lets check if we are enrolled in a profession if enrolled then check if we have next course in the profession
-            let nextCourseInProfession;
-            let nextModuleInNextCourse;
-            if (user.currentProfession) {
-              const profession = await Profession_Model.findById(user.currentProfession).populate('courses');
-              const currentCourseIndex = profession.courses.findIndex(c => c.course.toString() === course._id.toString());
-              nextCourseInProfession = profession.courses.find(c => c.order === currentCourseIndex + 1);
-              if (!nextCourseInProfession) {
-                // no next course that mean we have completed the profession lets cross check 
-                let success = true;
-                for (const profCourse of profession.courses) {
-                  const isCompleted = user.completedCourses.some(cc => cc.toString() === profCourse.course.toString());
-                  if (!isCompleted) {
-                    nextCourseInProfession = profCourse;
-                    success = false;
-                    break;
-                  }
-                }
-                if (success) {
+        if (codeSubmission) {
+          const course = await Course_Model
+            .findById(module.courseId)
+            .populate('modules');
 
-                  const certificateData = {
-                    title: profession.name,
-                    completedAt: new Date(),
-                    _id: profession._id
-                  }
+          const nextModule = course.modules.find(
+            m => m.order === module.order + 1
+          );
 
-                  // lets generate the certificate here for profession completion
-                  const res = await Certificate_service.generateCertificate(user, certificateData);
-                  if (res.error) {
-                    console.error('Certificate generation error:', res.error);
-                  } else {
-                    user.certificates.push(res.pdfUrl);
-                  }
-                  // user has completed the profession
-                  user.enrolledProfessions.push(user.currentProfession);
-                  user.currentProfession = null;
-                  user.currentCourse = null;
-                  user.currentModule = null;
-                  await user.save();
-                  return res.status(200).json({
-                    status: 'success',
-                    message: 'Congratulations! You have completed the entire profession.',
-                    data: {
-                      isProfessionCompleted: true,
-                      submissionId: submission._id,
-                      score: submission.score,
-                      totalQuestions: Module_model.mcqs.length,
-                      passed: isPassed,
-                      results,
-                      attemptNumber: attemptCount
-                    }
-                  });
-                }
-              }
-              nextModuleInNextCourse = await Module_Model.findOne({ course: nextCourseInProfession.course }).sort({ order: 1 });
-              user.currentModule = nextModuleInNextCourse ? nextModuleInNextCourse._id : null;
-              user.currentCourse = nextCourseInProfession ? nextCourseInProfession.course : null;
-              // lets generate a new certificate here for course completion
-              const certificateData = {
+          // ================= COURSE COMPLETED =================
+          if (!nextModule) {
+            console.log('[COURSE COMPLETED]', course.title);
+
+            // ✅ Ensure course completion stored
+            const alreadyCompleted = user.completedCourses.some(
+              cc => cc.courseId.toString() === course._id.toString()
+            );
+
+            if (!alreadyCompleted) {
+              console.log('[COURSE COMPLETION] Saving course + certificate');
+
+              const certData = {
                 title: course.title,
                 completedAt: new Date(),
                 _id: course._id
+              };
+
+              const cert = await Certificate_service.generateCertificate(
+                user,
+                certData
+              );
+
+              user.completedCourses.push({
+                courseId: course._id,
+                completedDate: new Date(),
+                points: POINTS.COURSE_COMPLETION,
+                certificate: !!cert?.pdfUrl,
+                certificateUrl: cert?.pdfUrl,
+                certificatePdfUrl: cert?.pdfUrl,
+                certificateImageUrl: cert?.imageUrl
+              });
+            }
+
+            // ================= PROFESSION FLOW =================
+            if (user.currentProfession) {
+              const profession = await Profession_Model
+                .findById(user.currentProfession)
+                .populate('courses.course');
+
+              const currentCourseObj = profession.courses.find(
+                c => c.course._id.toString() === course._id.toString()
+              );
+
+              const nextCourse = profession.courses.find(
+                c => c.order === currentCourseObj.order + 1
+              );
+
+              console.log('[NEXT COURSE]', nextCourse?.course?.title || 'NONE');
+
+              if (nextCourse) {
+                const nextModuleInCourse = await Module_Model
+                  .findOne({ courseId: nextCourse.course._id })
+                  .sort({ order: 1 });
+
+                user.currentCourse = nextCourse.course._id;
+                user.currentModule = nextModuleInCourse?._id || null;
+
+                await user.save();
+
+                return res.status(200).json({
+                  status: 'success',
+                  message: 'Course completed. Moved to next course.',
+                  data: { isCourseCompleted: true }
+                });
               }
-              const res = await Certificate_service.generateCertificate(user, certificateData);
-              if (res.error) {
-                console.error('Certificate generation error:', res.error);
-              } else {
 
-                user.certificates.push(res.pdfUrl);
-              }
+              // ================= PROFESSION COMPLETED =================
+              console.log('[PROFESSION COMPLETED]');
 
-              await user.save();
-
-              return res.status(200).json({
-                status: 'success',
-                message: 'All tests passed! Moved to next course in profession.',
-                data: {
-                  submissionId: submission._id,
-                  score: submission.score,
-                  totalQuestions: Module_model.mcqs.length,
-                  passed: isPassed,
-                  results,
-                  attemptNumber: attemptCount
+              const profCert = await Certificate_service.generateCertificate(
+                user,
+                {
+                  title: profession.name,
+                  completedAt: new Date(),
+                  _id: profession._id
                 }
+              );
+
+              user.completedProfessions.push({
+                professionId: profession._id,
+                completedDate: new Date(),
+                points: POINTS.PROFESSION_COMPLETION,
+                certificate: !!profCert?.pdfUrl,
+                certificateUrl: profCert?.pdfUrl,
+                certificatePdfUrl: profCert?.pdfUrl,
+                certificateImageUrl: profCert?.imageUrl
               });
 
+              user.currentProfession = null;
             }
+
             user.currentCourse = null;
             user.currentModule = null;
-            // lets generate the certificate here
-            const certificateData = {
-              title: course.title,
-              completedAt: new Date(),
-              _id: course._id
-            }
-            const res = await Certificate_service.generateCertificate(user, certificateData);
-            if (res.error) {
-              console.error('Certificate generation error:', res.error);
-            } else {
-              user.certificates.push(res.pdfUrl);
-            }
-            user.completedCourses.push(course._id);
             await user.save();
+
             return res.status(200).json({
               status: 'success',
-              message: 'Congratulations! You have completed all modules in this course.',
-              data: {
-                isCourseCompleted: true,
-                submissionId: submission._id,
-                score: submission.score,
-                totalQuestions: Module_model.mcqs.length,
-                passed: isPassed,
-                results,
-                attemptNumber: attemptCount
-              }
+              message: 'Course completed successfully',
+              data: { isCourseCompleted: true }
             });
           }
-          user.currentModule = nextModule ? nextModule._id : null;
+
+          // ================= MOVE TO NEXT MODULE =================
+          user.currentModule = nextModule._id;
           await user.save();
-          // Module is completed - both MCQ and Code passed
+
           return res.status(200).json({
             status: 'success',
-            message: 'Module completed! Moving to next module.',
-            data: {
-              isModuleCompleted: true,
-              submissionId: submission._id,
-              score: submission.score,
-              totalQuestions: Module_model.mcqs.length,
-              passed: isPassed,
-              results,
-              attemptNumber: attemptCount
-            }
+            message: 'Module completed. Moving to next module.',
+            data: { isModuleCompleted: true }
           });
         }
       }
 
-      // check if attempts are more than 3 so send cooldown for 1 hour
-      let cooldownUntil;
-      if (!isPassed && attemptCount > 3) {
-        cooldownUntil = new Date(Date.now() + 60 * 60000); // 1 hour cooldown
-        submission.cooldownUntil = cooldownUntil;
+      // ---------------- Cooldown on failure ----------------
+      if (!isPassed && attemptNumber > 3) {
+        submission.cooldownUntil = new Date(Date.now() + 60 * 60000);
         await submission.save();
       }
 
-      res.status(200).json({
+      return res.status(200).json({
         status: 'success',
-        message: isPassed ? 'MCQ completed successfully!' : 'Some answers were incorrect',
+        message: isPassed
+          ? 'MCQ completed successfully'
+          : 'Some answers were incorrect',
         data: {
           submissionId: submission._id,
           score: submission.score,
-          totalQuestions: Module_model.mcqs.length,
           passed: isPassed,
+          attemptNumber,
           results,
-          attemptNumber: attemptCount,
-          cooldownUntil,
-          nextAttemptAt: cooldownUntil
+          cooldownUntil: submission.cooldownUntil
         }
       });
+
     } catch (error) {
-      console.error(' Error in submit_mcq:', error);
+      console.error('[SUBMIT_MCQ ERROR]', error);
       res.status(500).json({
         status: 'error',
-        message: 'Failed to submit mcq'
+        message: 'Failed to submit MCQ'
       });
     }
-  },
+  }
+  ,
   get_my_module: async (req, res) => {
     try {
       const { userId } = req.user;

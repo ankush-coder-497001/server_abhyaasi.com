@@ -24,6 +24,10 @@ router.get('/get_all_users', Auth, UserController.get_all_users);
 router.put('/track_user_activity', Auth, UserController.trackActivity);
 router.put('/update_email', Auth, UserController.updateEmail);
 router.post('/delete_user', Auth, UserController.deleteAccount);
+
+// Certificate routes
+router.post('/download-certificate', Auth, UserController.downloadCertificate);
+
 // this is for uploading single images 
 // this will return the url of the uploaded image 
 // public route

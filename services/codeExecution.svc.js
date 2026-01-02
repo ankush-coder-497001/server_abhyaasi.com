@@ -20,9 +20,21 @@ class CodeExecutionService {
       java: {
         ext: 'java',
         cmd: 'java',
-        compile: async (file) => {
-          await this.runCommand('javac', [file]);
-          return file.replace('.java', '');
+        compile: async (file, workDir) => {
+          // Extract the public class name from the Java file
+          const content = await fs.readFile(file, 'utf-8');
+          const classMatch = content.match(/public\s+class\s+(\w+)/);
+          const className = classMatch ? classMatch[1] : 'Main';
+
+          // Rename file to match class name
+          const correctFile = path.join(path.dirname(file), `${className}.java`);
+          if (file !== correctFile) {
+            await fs.rename(file, correctFile);
+          }
+
+          // Compile
+          await this.runCommand('javac', [correctFile], '', 30000);
+          return className;
         }
       },
       cpp: {
@@ -98,16 +110,23 @@ class CodeExecutionService {
 
       // Compile if needed
       let executablePath = filepath;
+      let args = [];
+
       if (langConfig.compile) {
-        executablePath = await langConfig.compile(filepath);
+        executablePath = await langConfig.compile(filepath, workDir);
+        // For Java, we need to run with classpath pointing to workDir
+        args = ['-cp', workDir, executablePath];
+      } else {
+        args = [executablePath];
       }
 
-      // Run the code
-      const { stdout } = await this.runCommand(
+      // Run the code with proper working directory for Java
+      const { stdout } = await this.runCommandInDir(
         langConfig.cmd,
-        [executablePath],
+        args,
         testCase.input,
-        timeoutSeconds * 1000
+        timeoutSeconds * 1000,
+        workDir
       );
 
       // Clean up
@@ -127,8 +146,64 @@ class CodeExecutionService {
     }
   }
 
+  async runCommandInDir(cmd, args, input = '', timeout = 10000, workDir = null) {
+    return new Promise((resolve, reject) => {
+      const options = {};
+      if (workDir) {
+        options.cwd = workDir;
+      }
+
+      const process = spawn(cmd, args, options);
+      let stdout = '';
+      let stderr = '';
+      let killed = false;
+
+      const timer = setTimeout(() => {
+        killed = true;
+        process.kill();
+        reject(new Error('Execution timed out'));
+      }, timeout);
+
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      process.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      process.on('close', (code) => {
+        clearTimeout(timer);
+        if (!killed) {
+          if (code === 0) {
+            resolve({ stdout, stderr });
+          } else {
+            reject(new Error(stderr || `Process exited with code ${code}`));
+          }
+        }
+      });
+
+      if (input) {
+        process.stdin.write(input);
+        process.stdin.end();
+      }
+    });
+  }
+
+  normalizeOutput(text) {
+    // Normalize output: trim, remove trailing newlines, collapse multiple spaces
+    return text
+      .trim()
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .join('\n');
+  }
+
   validateOutput(output, expectedOutput) {
-    return output.trim() === expectedOutput.trim();
+    const normalized1 = this.normalizeOutput(output);
+    const normalized2 = this.normalizeOutput(expectedOutput);
+    return normalized1 === normalized2;
   }
 }
 

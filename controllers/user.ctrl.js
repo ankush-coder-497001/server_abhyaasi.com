@@ -3,6 +3,7 @@ const fs = require('fs');
 const UserModel = require('../models/user.model');
 const submissionModel = require('../models/submission.model');
 const EmailService = require('../services/email.svc');
+const POINTS = require('../constants/points');
 const UserController = {
   uploadImage: async (req, res) => {
     try {
@@ -38,7 +39,13 @@ const UserController = {
         return res.status(400).json({ message: 'User with this email already exists' });
       }
 
-      const newUser = new UserModel({ name, email, password, role });
+      const profile = {
+        bio: 'Hey there! I am using Abhyaasi.',
+        college: 'College ! Who cares',
+        year: 1,
+      }
+
+      const newUser = new UserModel({ name, email, password, role, profile });
       await newUser.save();
 
       const token = newUser.generateAuthToken();
@@ -55,7 +62,9 @@ const UserController = {
       if (!name || !email) {
         return res.status(400).json({ message: 'Name and email are required' });
       }
-      let user = await UserModel.findOne({ email });
+      let user = await UserModel.findOne({ email })
+        .populate('completedCourses.courseId')
+        .populate('completedProfessions.professionId');
       if (!user) {
         user = new UserModel({ name, email, password: Math.random().toString(36).slice(-8), isOauthUser: true });
         const token = user.generateAuthToken();
@@ -78,7 +87,9 @@ const UserController = {
       if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });
       }
-      const user = await UserModel.findOne({ email });
+      const user = await UserModel.findOne({ email })
+        .populate('completedCourses.courseId')
+        .populate('completedProfessions.professionId');
       if (!user || !user.comparePassword(password)) {
         return res.status(401).json({ message: 'Invalid email or password' });
       }
@@ -113,7 +124,10 @@ const UserController = {
   getUserProfile: async (req, res) => {
     try {
       const userId = req.user.userId;
-      const user = await UserModel.findById(userId).select('-password -otp -otpExpiry');
+      const user = await UserModel.findById(userId)
+        .select('-password -otp -otpExpiry')
+        .populate('completedCourses.courseId', 'title description duration modules difficulty')
+        .populate('completedProfessions.professionId', 'name description courses estimatedDuration');
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
@@ -239,7 +253,10 @@ const UserController = {
             select: '_id title order topics isMcqCompleted isCodingCompleted'
           }
         })
-        .populate('currentModule', 'title order topics');
+        .populate('currentModule', 'title order topics')
+        .populate('currentProfession', 'name description')
+        .populate('completedCourses.courseId', 'title description duration modules difficulty')
+        .populate('completedProfessions.professionId', 'name description courses estimatedDuration');
 
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
@@ -250,30 +267,52 @@ const UserController = {
         const submissionModel = require('../models/submission.model');
         const moduleProgress = [];
 
-        for (const module of user.currentCourse.modules) {
-          const moduleId = typeof module === 'object' ? module._id : module;
+        // If user is enrolled in a profession, get all courses from profession
+        let coursesToCheck = [user.currentCourse];
 
-          const mcqSubmission = await submissionModel.findOne({
-            userId,
-            moduleId,
-            type: 'mcq',
-            status: 'passed'
-          });
+        if (user.currentProfession) {
+          // Fetch profession with all its courses
+          const ProfessionModel = require('../models/profession.model');
+          const profession = await ProfessionModel.findById(user.currentProfession)
+            .populate({
+              path: 'courses.course',
+              select: 'modules title'
+            });
 
-          const codingSubmission = await submissionModel.findOne({
-            userId,
-            moduleId,
-            type: 'code',
-            status: 'passed'
-          });
+          if (profession && profession.courses) {
+            coursesToCheck = profession.courses.map(pc => pc.course).filter(c => c && c._id);
+          }
+        }
 
-          moduleProgress.push({
-            moduleId,
-            isMcqCompleted: !!mcqSubmission,
-            isCodingCompleted: !!codingSubmission,
-            mcqScore: mcqSubmission?.score || 0,
-            codingScore: codingSubmission?.score || 0
-          });
+        // Now iterate through all courses to check module progress
+        for (const course of coursesToCheck) {
+          if (course && course.modules && Array.isArray(course.modules)) {
+            for (const module of course.modules) {
+              const moduleId = typeof module === 'object' ? module._id : module;
+
+              const mcqSubmission = await submissionModel.findOne({
+                userId,
+                moduleId,
+                type: 'mcq',
+                status: 'passed'
+              });
+
+              const codingSubmission = await submissionModel.findOne({
+                userId,
+                moduleId,
+                type: 'code',
+                status: 'passed'
+              });
+
+              moduleProgress.push({
+                moduleId,
+                isMcqCompleted: !!mcqSubmission,
+                isCodingCompleted: !!codingSubmission,
+                mcqScore: mcqSubmission?.score || 0,
+                codingScore: codingSubmission?.score || 0
+              });
+            }
+          }
         }
 
         user._doc.moduleProgress = moduleProgress;
@@ -302,7 +341,13 @@ const UserController = {
   },
   get_all_users: async (req, res) => {
     try {
-      const users = await UserModel.find().populate('currentCourse').populate('currentModule').populate('currentProfession').select('-password -otp -otpExpiry');
+      const users = await UserModel.find()
+        .populate('currentCourse')
+        .populate('currentModule')
+        .populate('currentProfession')
+        .populate('completedCourses.courseId')
+        .populate('completedProfessions.professionId')
+        .select('-password -otp -otpExpiry');
       return res.status(200).json({ users });
     } catch (error) {
       console.error(error);
@@ -405,12 +450,42 @@ const UserController = {
       console.error(error);
       return res.status(500).json({ message: 'Failed to delete account', error });
     }
+  },
+
+  downloadCertificate: async (req, res) => {
+    try {
+      const { certificateUrl, filename } = req.body;
+
+      if (!certificateUrl) {
+        return res.status(400).json({ message: 'Certificate URL is required' });
+      }
+
+      // Fetch certificate from Cloudinary
+      const response = await fetch(certificateUrl);
+      if (!response.ok) {
+        return res.status(response.status).json({ message: 'Failed to fetch certificate' });
+      }
+
+      const buffer = await response.buffer();
+      const finalFilename = filename || 'certificate.pdf';
+
+      // Set headers for download
+      res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
+      res.setHeader('Content-Length', buffer.length);
+
+      // Send the file
+      res.send(buffer);
+    } catch (error) {
+      console.error('Download error:', error);
+      return res.status(500).json({ message: 'Failed to download certificate', error: error.message });
+    }
   }
 };
 
 function calculateRank(points) {
-  if (points >= 1000) return 'Gold';
-  if (points >= 500) return 'Silver';
+  if (points >= POINTS.GOLD_THRESHOLD) return 'Gold';
+  if (points >= POINTS.SILVER_THRESHOLD) return 'Silver';
   return 'Bronze';
 }
 module.exports = UserController;

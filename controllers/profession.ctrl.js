@@ -1,6 +1,7 @@
 const moduleModel = require("../models/module.model");
 const Profession = require("../models/profession.model");
 const userModel = require("../models/user.model");
+const Submission_Model = require("../models/submission.model");
 const Profession_controller = {
   create_profession: async (req, res) => {
     try {
@@ -133,7 +134,7 @@ const Profession_controller = {
         return res.status(404).json({ message: "Profession not found" });
       }
 
-      if (user.enrolledProfessions.includes(professionId)) {
+      if (user.enrolledProfessions.some(ep => ep?.professionId?.toString() === professionId || ep?.toString?.() === professionId)) {
         return res
           .status(400)
           .json({ message: "User already enrolled in this profession" });
@@ -145,7 +146,10 @@ const Profession_controller = {
             "Cannot enroll in a new profession while enrolled in a course. Please complete or unenroll from the current course first.",
         });
       }
-      user.enrolledProfessions.push(professionId);
+      user.enrolledProfessions.push({
+        professionId: professionId,
+        enrolledDate: new Date()
+      });
       user.currentProfession = professionId;
       const firstCourse = profession.courses.sort(
         (a, b) => a.order - b.order
@@ -183,17 +187,45 @@ const Profession_controller = {
       if (!professionId) {
         return res.status(400).json({ message: "Profession ID is required" });
       }
-      const profession = await Profession.findById(professionId);
+      const profession = await Profession.findById(professionId).populate('courses.course');
       if (!profession) {
         return res.status(404).json({ message: "Profession not found" });
       }
-      const index = user.enrolledProfessions.indexOf(professionId);
-      if (index === -1) {
+      const enrolledProfessionIndex = user.enrolledProfessions.findIndex(
+        ep => ep?.professionId?.toString() === professionId || ep?.toString?.() === professionId
+      );
+      if (enrolledProfessionIndex === -1) {
         return res
           .status(400)
           .json({ message: "User is not enrolled in this profession" });
       }
-      user.enrolledProfessions.splice(index, 1);
+
+      // Get the enrollment date
+      const enrolledProfession = user.enrolledProfessions[enrolledProfessionIndex];
+      const enrollmentDate = enrolledProfession?.enrolledDate || new Date();
+
+      // Get all course IDs from the profession
+      const professionCourseIds = profession.courses.map(c => c.course._id || c.course);
+
+      // Delete all submissions for courses in this profession that were submitted after enrollment
+      await Submission_Model.deleteMany({
+        userId: userId,
+        courseId: { $in: professionCourseIds },
+        createdAt: { $gte: enrollmentDate }
+      });
+
+      // Remove completed courses for this profession from user that were completed after enrollment
+      user.completedCourses = user.completedCourses.filter(
+        cc => {
+          const isCourseInProfession = professionCourseIds.some(
+            cid => cid.toString() === (cc.courseId?.toString() || cc.toString())
+          );
+          // Keep the course if it's NOT in this profession OR if it was completed before enrollment
+          return !isCourseInProfession || (cc.completedDate && cc.completedDate < enrollmentDate);
+        }
+      );
+
+      user.enrolledProfessions.splice(enrolledProfessionIndex, 1);
       if (
         user.currentProfession &&
         user.currentProfession.toString() === professionId
@@ -203,7 +235,7 @@ const Profession_controller = {
       // If the user's current course/module belongs to this profession, clear them
       if (user.currentCourse) {
         const isCurrentCourseInProfession = profession.courses.some(
-          (c) => c.course.toString() === user.currentCourse.toString()
+          (c) => c.course._id.toString() === user.currentCourse.toString() || c.course.toString() === user.currentCourse.toString()
         );
         if (isCurrentCourseInProfession) {
           user.currentCourse = null;
@@ -212,7 +244,7 @@ const Profession_controller = {
       }
       await user.save();
       res.status(200).json({
-        message: "Unenrolled from profession successfully",
+        message: "Unenrolled from profession successfully. All submissions and completed courses for this profession have been removed.",
         profession,
       });
     } catch (error) {

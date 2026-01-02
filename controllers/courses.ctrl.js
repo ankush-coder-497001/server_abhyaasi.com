@@ -30,7 +30,7 @@ const CourseController = {
         return res.status(400).json({ message: 'User already enrolled in this course' });
       }
 
-      const alreadyCompleted = user.completedCourses.some(cId => cId.toString() === courseId);
+      const alreadyCompleted = user.completedCourses.some(cc => (cc.courseId?.toString() || cc.toString()) === courseId);
       if (alreadyCompleted) {
         return res.status(400).json({ message: 'User has already completed this course' });
       }
